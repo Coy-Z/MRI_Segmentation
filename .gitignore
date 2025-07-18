@@ -1,0 +1,12 @@
+# Ignore virtual environments
+fcn_env/
+venv/
+env/
+
+# Ignore Python cache files
+__pycache__/
+*.py[cod]
+
+# Ignore system files
+.DS_Store
+Thumbs.db

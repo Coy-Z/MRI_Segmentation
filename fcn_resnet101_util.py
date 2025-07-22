@@ -102,6 +102,7 @@ class CE_Dice_Loss(nn.Module): # Need to complete ----
             beta (float): Relative weighting of false positives and false negatives in Tversky loss.
             gamma (float): The Focal loss exponent.
             epsilon (float): The smoothing factor.
+            ce_weights (iterable): The relative weighting of classes within the Cross-Entropy loss.
         '''
         super().__init__()
         self.alpha = alpha
@@ -146,8 +147,9 @@ class CE_Dice_Loss(nn.Module): # Need to complete ----
         probs_fg = probs[:, 1, :, :]
         target_fg = target_onehot[:, 1, :, :]
         intersection = (probs_fg * target_fg).sum(dim = (1, 2))
-        dice_coeff = (2 * intersection + epsilon ) / (probs_fg.sum(dim = (1, 2)) + target_fg.sum(dim = (1, 2)) + epsilon) # Note probs.sum() = D * H * W
-        return 1 - dice_coeff
+        dice_coeff = (2 * intersection + epsilon ) / (probs_fg.sum(dim = (1, 2)) + target_fg.sum(dim = (1, 2)) + epsilon)
+        dice_loss = 1 - dice_coeff
+        return dice_loss.mean() # Average over depth
 
     def FocalTverskyLoss(self, output: torch.Tensor, target : torch.Tensor, epsilon : float = 1e-8) -> float:
         '''
@@ -173,12 +175,12 @@ class CE_Dice_Loss(nn.Module): # Need to complete ----
         probs_fg = probs[:, 1, :, :]
         target_fg = target_onehot[:, 1, :, :]
         # Calculate loss coefficient
-        TP = (probs_fg * target_fg).sum(dim = (1, 2))
-        FP = (probs_fg * (1 - target_fg)).sum(dim = (1, 2))
-        FN = ((1 - probs_fg) * target_fg).sum(dim = (1, 2))
+        TP = (probs_fg * target_fg).sum(dim = (1, 2)) # True Positive
+        FP = (probs_fg * (1 - target_fg)).sum(dim = (1, 2)) # False Positive
+        FN = ((1 - probs_fg) * target_fg).sum(dim = (1, 2)) # False Negative
         tversky_coeff = (TP + epsilon) / (TP + alpha * FP + beta * FN + epsilon)
         focal_tversky_loss = (1 - tversky_coeff)**gamma
-        return focal_tversky_loss
+        return focal_tversky_loss.mean() # Average over depth
 
 def grayscale_to_rgb(scan : np.ndarray[float], cmap : str = 'inferno') -> np.ndarray[float]:
     '''

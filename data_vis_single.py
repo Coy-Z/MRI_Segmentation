@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from matplotlib.animation import FuncAnimation
 
-scan = np.load('data2/mag.npy')
+scan = np.load('data/data2/mag.npy')
 print(scan.shape)
 numSlices = scan.shape[0]
 

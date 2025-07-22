@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 import torch
 import torch.nn as nn
 import torchvision
@@ -9,12 +10,12 @@ class MRIDataset(Dataset):
     '''
     A custom dataset class for processing .npy 3D MRI density scans.
     '''
-    def __init__(self, dir : str, phase : str = 'val', transform = None, augment = None):
+    def __init__(self, root : str, phase : str = 'val', transform = None, target_transform = None, augment = None):
         '''
         Initialise the MRIDataset daughter class of torch.utils.data.Dataset.
 
         Args:
-            dir (str): The string directory of the data.
+            root (str): The string directory of the data.
             phase (str): Indicating whether it is a training or validation dataset.
             transform: The deterministic component of transform (i.e. no random flipping -> validation transform).
             augment: The stochastic component of transform (e.g. random horizontal flip -> additional training transform).
@@ -23,17 +24,21 @@ class MRIDataset(Dataset):
         '''
         # Currently incomplete, depends on how data is laid out. ----
         super().__init__()
-        self.scans = np.array([np.load(f'{dir}/magn.npy')]) # (N * D * H * W)
-        self.masks = np.array([np.load(f'{dir}/mask.npy')]) # (N * D * H * W)
+        #self.scans = np.array([np.load(f'{root}/magn.npy')]) # (N * D * H * W)
+        #self.masks = np.array([np.load(f'{root}/mask.npy')]) # (N * D * H * W)
+        self.scans = list(sorted(os.listdir(os.path.join(root, "magn")))) # (N * D * H * W)
+        self.masks = list(sorted(os.listdir(os.path.join(root, "mask")))) # (N * D * H * W)
+        self.root = root
         self.phase = phase
         self.transform = transform
+        self.target_transform = target_transform
         self.augment = augment
     
     def __len__(self):
         '''
         Return the number of scans in the Dataset.
         '''
-        return self.scans.shape[0]
+        return len(self.scans)
     
     def __getitem__(self, idx : int) -> tuple[torch.Tensor, torch.Tensor]:
         '''
@@ -46,12 +51,15 @@ class MRIDataset(Dataset):
             scan (torch.Tensor): The pre-processed RGB scan Float32 tensor (D * 3 * H * W).
             mask3d (torch.Tensor): The pre-processed binary mask Int64 tensor (D * H * W).
         '''
-        scan = grayscale_to_rgb(self.scans[idx]) # (D * H * W * 3)
-        mask3d = self.masks[idx][..., np.newaxis] # (D * H * W * 1)
+        scan_path = os.path.join(self.root, "magn", self.scans[idx])
+        mask_path = os.path.join(self.root, "mask", self.masks[idx])
+        scan = grayscale_to_rgb(np.load(scan_path)) # (D * H * W * 3)
+        mask3d = np.load(mask_path)[..., np.newaxis] # (D * H * W * 1)
 
         if self.transform:
             scan = torch.stack([self.transform(slice) for slice in scan]) # (D * 3 * H * W)
-            mask3d = torch.stack([self.transform(mask) for mask in mask3d]) # (D * 1 * H * W)
+        if self.target_transform:
+            mask3d = torch.stack([self.target_transform(mask) for mask in mask3d]) # (D * 1 * H * W)
         if self.augment and self.phase == 'train':
             data = torch.cat([scan, mask3d], 1) # (D * 4 * H * W)
             data = self.augment(data)
@@ -59,6 +67,9 @@ class MRIDataset(Dataset):
             scan = data[:, :3, :, :] # (D * 3 * H * W)
             mask3d = data[:, 3:, :, :] # (D * 1 * H * W)
         return scan, mask3d.squeeze(1)
+    
+    #def __getitems__(self, idxs : list[int]) -> list[tuple[torch.Tensor, torch.Tensor]]:
+        return
     
     def grayscale_to_rgb(self, scan: np.ndarray[float], cmap : str = 'inferno') -> np.ndarray[float]:
         '''
@@ -82,7 +93,7 @@ class CE_DICE_Loss(nn.Module): # Need to complete ----
     '''
     A custom loss function class for a combined cross-entropy and DICE loss.
     '''
-    def __init__(self, alpha = 1.):
+    def __init__(self, device, alpha = 1.):
         '''
         Initialise the CE_DICE_Loss daughter class of torch.nn.Module.
 
@@ -91,22 +102,22 @@ class CE_DICE_Loss(nn.Module): # Need to complete ----
         '''
         super().__init__()
         self.alpha = alpha
-        self.CELoss = nn.CrossEntropyLoss()
+        self.CELoss = nn.CrossEntropyLoss(weight = torch.tensor([0.1, 1]).to(device))
 
     def forward(self, output : torch.Tensor, target : torch.Tensor) -> float:
         '''
         Calculates the combined cross-entropy and DICE loss, i.e. forward pass of combined loss function.
         
         Args:
-            output (torch.Tensor): Predicted mask logits Float32 tensor (any shape).
-            target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor (same shape as output).
+            output (torch.Tensor): Predicted mask logits Float32 tensor (D * 2 * H * W).
+            target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor (D * H * W).
         
         Returns:
             loss (float): The combined loss.
         '''
         CE = self.CELoss(output, target)
         DICE = self.DICELoss(output, target)
-        return CE + self.alpha * DICE
+        return self.alpha * DICE + CE
     
     def DICELoss(self, output : torch.Tensor, target : torch.Tensor, epsilon : float = 1e-8) -> float:
         '''
@@ -124,7 +135,7 @@ class CE_DICE_Loss(nn.Module): # Need to complete ----
         # Excite the target tensor to shape (D * 2 * H * W)
         target_onehot = torch.nn.functional.one_hot(target, num_classes = 2).permute(0, 3, 1, 2).float()
         intersection = (probs * target_onehot).sum()
-        dice_coeff = 2 * intersection / (probs.sum() + target.sum() + epsilon)
+        dice_coeff = 2 * intersection / (probs.sum() + target.sum() + epsilon) # Note probs.sum() = D * H * W
         return 1 - dice_coeff
 
 def grayscale_to_rgb(scan : np.ndarray[float], cmap : str = 'inferno') -> np.ndarray[float]:
@@ -180,9 +191,6 @@ def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
     '''
     intersection = torch.logical_and(pred_mask, true_mask).sum().item()
     union = torch.logical_or(pred_mask, true_mask).sum().item()
-    print(intersection)
-    print(union)
-    print(pred_mask.sum().item())
 
     if union == 0: # Handle empty masks
         return 1.0 if intersection == 0 else 0.0

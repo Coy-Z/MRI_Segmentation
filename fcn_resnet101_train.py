@@ -87,6 +87,13 @@ if __name__ == '__main__':
     transform = T.Compose([
         T.ToImage(),
         T.ToDtype(torch.float32, scale = True),
+        T.Resize(size = (41, 41), interpolation=T.InterpolationMode.BILINEAR),
+        T.Lambda(clip_and_scale)
+    ])
+    target_transform = T.Compose([
+        T.ToImage(),
+        T.ToDtype(torch.float32, scale = True),
+        T.Resize(size = (41, 41), interpolation=T.InterpolationMode.NEAREST),
         T.Lambda(clip_and_scale)
     ])
     augment = T.Compose([
@@ -95,18 +102,18 @@ if __name__ == '__main__':
     ])
 
     # Set up datasets
-    data_dir = 'data/carotid_test'
-    image_datasets = {x : MRIDataset(os.path.join(data_dir, x), x, transform, augment) for x in ['train', 'val']}
+    data_dir = 'data'
+    image_datasets = {x : MRIDataset(os.path.join(data_dir, x), x, transform, target_transform, augment) for x in ['train', 'val']}
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
 
     dataloaders = {x: DataLoader(image_datasets[x], batch_size = 1, shuffle = True, num_workers = 0, persistent_workers = False) for x in ['train', 'val']}
 
     model = get_model_instance_segmentation(num_classes = 2)
 
-    criterion = CE_DICE_Loss(2)
+    criterion = CE_DICE_Loss(device, 0.1)
     optimizer = optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9)
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 7, gamma = 0.1)
+    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 30, gamma = 0.2)
 
-    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, num_epochs = 10)
+    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, num_epochs = 100)
 
     torch.save(model.state_dict(), 'model_params.pth')

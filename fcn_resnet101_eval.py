@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import numpy as np
+import scipy
 import torch
 import torch.nn as nn
 import torchvision
@@ -39,7 +40,8 @@ device = torch.accelerator.current_accelerator().type if torch.accelerator.is_av
 model = get_model_instance_segmentation(num_classes = 2, trained = True)
 model.to(device)
 
-images = np.load('data/carotid_mask_and_magn_coy/magn.npy')
+#images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)
+images = np.load('data/magn/Carotid.npy')
 
 masks = evaluation(model, images, device)
 

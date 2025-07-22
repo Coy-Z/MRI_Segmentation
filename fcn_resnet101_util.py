@@ -89,20 +89,26 @@ class MRIDataset(Dataset):
         scan = np.delete(scan, 3, axis = 3) # (D * H * W * 3)
         return scan
     
-class CE_DICE_Loss(nn.Module): # Need to complete ----
+class CE_Dice_Loss(nn.Module): # Need to complete ----
     '''
     A custom loss function class for a combined cross-entropy and DICE loss.
     '''
-    def __init__(self, device, alpha = 1.):
+    def __init__(self, device, alpha : float = 1., beta : float = 0.7, gamma : float = 0.75, epsilon : float = 1e-8, ce_weights : list[float, float] = [0.5, 0.5]):
         '''
-        Initialise the CE_DICE_Loss daughter class of torch.nn.Module.
+        Initialise the CE_Dice_Loss daughter class of torch.nn.Module.
 
         Args:
-            alpha (float): Relative weighting of output and target (N.B. only relative magnitude matters).
+            alpha (float): Relative weighting of Cross-Entropy and Dice losses (N.B. only relative magnitude matters).
+            beta (float): Relative weighting of false positives and false negatives in Tversky loss.
+            gamma (float): The Focal loss exponent.
+            epsilon (float): The smoothing factor.
         '''
         super().__init__()
         self.alpha = alpha
-        self.CELoss = nn.CrossEntropyLoss(weight = torch.tensor([0.1, 1]).to(device))
+        self.beta = beta
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.CELoss = nn.CrossEntropyLoss(weight = torch.tensor(ce_weights).to(device))
 
     def forward(self, output : torch.Tensor, target : torch.Tensor) -> float:
         '''
@@ -116,27 +122,63 @@ class CE_DICE_Loss(nn.Module): # Need to complete ----
             loss (float): The combined loss.
         '''
         CE = self.CELoss(output, target)
-        DICE = self.DICELoss(output, target)
-        return self.alpha * DICE + CE
+        DICE = self.DiceLoss(output, target, self.epsilon)
+        FOC_TVSKY = self.FocalTverskyLoss(output, target, self.epsilon)
+        return self.alpha * FOC_TVSKY + CE
     
-    def DICELoss(self, output : torch.Tensor, target : torch.Tensor, epsilon : float = 1e-8) -> float:
+    def DiceLoss(self, output : torch.Tensor, target : torch.Tensor, epsilon : float = 1e-8) -> float:
         '''
-        Calculate the DICE loss of a predicted mask with respect to the ground truth.
+        Calculate the Dice loss of a predicted mask with respect to the ground truth.
 
         Args:
             output (torch.Tensor): Predicted mask logits Float32 tensor (D * 2 * H * W).
             target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor (D * H * W).
+            epsilon (float): The smoothing factor.
         
         Returns:
-            dice_loss (float): The DICE loss (1 - DICE coefficient). The negation allows for gradient descent.
+            dice_loss (float): The Dice loss (1 - Dice coefficient). The negation allows for gradient descent.
         '''
         # Softmax the logits to probabilities
         probs = torch.softmax(output, dim = 1)
         # Excite the target tensor to shape (D * 2 * H * W)
         target_onehot = torch.nn.functional.one_hot(target, num_classes = 2).permute(0, 3, 1, 2).float()
-        intersection = (probs * target_onehot).sum()
-        dice_coeff = 2 * intersection / (probs.sum() + target.sum() + epsilon) # Note probs.sum() = D * H * W
+        # Focus on foreground class (class 1)
+        probs_fg = probs[:, 1, :, :]
+        target_fg = target_onehot[:, 1, :, :]
+        intersection = (probs_fg * target_fg).sum(dim = (1, 2))
+        dice_coeff = (2 * intersection + epsilon ) / (probs_fg.sum(dim = (1, 2)) + target_fg.sum(dim = (1, 2)) + epsilon) # Note probs.sum() = D * H * W
         return 1 - dice_coeff
+
+    def FocalTverskyLoss(self, output: torch.Tensor, target : torch.Tensor, epsilon : float = 1e-8) -> float:
+        '''
+        Calculate the Focal Tversky loss of a predicted mask with respect to the ground truth.
+
+        Args:
+            output (torch.Tensor): Predicted mask logits Float32 tensor (D * 2 * H * W).
+            target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor (D * H * W).
+            epsilon (float): The smoothing factor.
+        
+        Returns:
+            focal_tversky_loss (float): The Focal Tversky loss.
+        '''
+        # Hyperparameters
+        alpha = 1 - self.beta
+        beta = self.beta
+        gamma = self.gamma
+        # Softmax the logits to probabilities
+        probs = torch.softmax(output, dim = 1)
+        # Excite the target tensor to shape (D * 2 * H * W)
+        target_onehot = torch.nn.functional.one_hot(target, num_classes = 2).permute(0, 3, 1, 2).float()
+        # Focus on foreground class (class 1)
+        probs_fg = probs[:, 1, :, :]
+        target_fg = target_onehot[:, 1, :, :]
+        # Calculate loss coefficient
+        TP = (probs_fg * target_fg).sum(dim = (1, 2))
+        FP = (probs_fg * (1 - target_fg)).sum(dim = (1, 2))
+        FN = ((1 - probs_fg) * target_fg).sum(dim = (1, 2))
+        tversky_coeff = (TP + epsilon) / (TP + alpha * FP + beta * FN + epsilon)
+        focal_tversky_loss = (1 - tversky_coeff)**gamma
+        return focal_tversky_loss
 
 def grayscale_to_rgb(scan : np.ndarray[float], cmap : str = 'inferno') -> np.ndarray[float]:
     '''

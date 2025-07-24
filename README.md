@@ -17,6 +17,8 @@ One of the Carotid, and one of the Aorta. These are then warped using varying si
 producing high-quality artificial data to train the model on. Some demonstrative slices are
 shown below.
 
+![Aorta](images/aorta.png)
 
+![Carotid](images/carotid.png)
 
 Note the data is not yet publicly available.

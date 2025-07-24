@@ -87,13 +87,13 @@ if __name__ == '__main__':
     transform = T.Compose([
         T.ToImage(),
         T.ToDtype(torch.float32, scale = True),
-        T.Resize(size = (41, 41), interpolation=T.InterpolationMode.BILINEAR),
+        T.Resize(size = (50, 50), interpolation=T.InterpolationMode.BILINEAR),
         T.Lambda(clip_and_scale)
     ])
     target_transform = T.Compose([
         T.ToImage(),
         T.ToDtype(torch.float32, scale = True),
-        T.Resize(size = (41, 41), interpolation=T.InterpolationMode.NEAREST),
+        T.Resize(size = (50, 50), interpolation=T.InterpolationMode.NEAREST),
         T.Lambda(clip_and_scale)
     ])
     augment = T.Compose([
@@ -112,8 +112,8 @@ if __name__ == '__main__':
 
     criterion = CE_Dice_Loss(device, alpha = 2, beta = 0.8, gamma = 0.75, ce_weights=(0.1, 1))
     optimizer = optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9)
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 100, gamma = 0.1)
+    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 60, gamma = 0.1)
 
-    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, num_epochs = 300)
+    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, num_epochs = 100)
 
     torch.save(model.state_dict(), 'model_params.pth')

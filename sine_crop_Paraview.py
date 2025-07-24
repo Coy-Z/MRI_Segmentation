@@ -4,8 +4,6 @@ import vtk
 input_data = self.GetInput()
 output = self.GetOutput()
 
-print(input_data.GetClassName())
-
 # Extract input grid info
 points = input_data.GetPoints()
 n_points = points.GetNumberOfPoints()

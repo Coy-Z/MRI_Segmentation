@@ -1,7 +1,9 @@
-import torch
-from fcn_resnet101_util import sum_IoU, CE_DICE_Loss
+# Checking the loss function behaves as expected on the most basic example.
 
-criterion = CE_DICE_Loss(1)
+import torch
+from fcn_resnet101_util import sum_IoU, CE_Dice_Loss
+
+criterion = CE_Dice_Loss(1)
 
 mask = torch.Tensor([ # 2 * 1 * 2
     [[1, 0]],

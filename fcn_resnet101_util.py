@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torchvision
 from torch.utils.data import Dataset
+from typing import Sequence
+
 
 class MRIDataset(Dataset):
     '''
@@ -93,7 +95,8 @@ class CE_Dice_Loss(nn.Module): # Need to complete ----
     '''
     A custom loss function class for a combined cross-entropy and DICE loss.
     '''
-    def __init__(self, device, alpha : float = 1., beta : float = 0.7, gamma : float = 0.75, epsilon : float = 1e-8, ce_weights : list[float, float] = [0.5, 0.5]):
+    def __init__(self, device, alpha : float = 1., beta : float = 0.7, gamma : float = 0.75,
+                 epsilon : float = 1e-8, ce_weights : Sequence[float] = [0.5, 0.5]):
         '''
         Initialise the CE_Dice_Loss daughter class of torch.nn.Module.
 

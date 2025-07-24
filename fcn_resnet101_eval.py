@@ -41,7 +41,7 @@ model = get_model_instance_segmentation(num_classes = 2, trained = True)
 model.to(device)
 
 #images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)
-images = np.load('data/magn/Carotid.npy')
+images = np.load('data/magn/Aorta.npy')
 
 masks = evaluation(model, images, device)
 

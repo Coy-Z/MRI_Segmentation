@@ -16,3 +16,6 @@ Thumbs.db
 
 # Ignore data files
 data/
+
+# Ignore Paraview files
+*.pvsm

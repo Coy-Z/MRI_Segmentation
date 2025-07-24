@@ -1,7 +1,7 @@
 # Checking the loss function behaves as expected on the most basic example.
 
 import torch
-from fcn_resnet101_util import sum_IoU, CE_Dice_Loss
+from FCNResNet_Segmentation.fcn_resnet101_util import sum_IoU, CE_Dice_Loss
 
 criterion = CE_Dice_Loss(1)
 

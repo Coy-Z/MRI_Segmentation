@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torchvision
 from torchvision.transforms import v2 as T
-from fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, grayscale_to_rgb
+from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, grayscale_to_rgb
 
 val_transform = T.Compose([
     T.ToImage(),
@@ -41,7 +41,7 @@ model = get_model_instance_segmentation(num_classes = 2, trained = True)
 model.to(device)
 
 #images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)
-images = np.load('data/magn/Carotid.npy')
+images = np.load('data/magn/Aorta.npy')
 
 masks = evaluation(model, images, device)
 
@@ -49,7 +49,7 @@ masks = evaluation(model, images, device)
 pcm = []
 fig, ax = plt.subplots(1, 2, figsize = (10,6))
 pcm.append(ax[0].imshow(images[13], cmap = 'bone'))
-pcm.append(ax[1].imshow(masks[13], cmap = 'cividis'))
+pcm.append(ax[1].imshow(masks[13], cmap = 'cividis', vmin=0, vmax=1))
 fig.colorbar(pcm[1], ax = ax, shrink = 0.6)
 ax[0].axis("off")
 ax[1].axis("off")

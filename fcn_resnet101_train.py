@@ -9,7 +9,7 @@ import torchvision
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
-from fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, sum_IoU, MRIDataset, CE_Dice_Loss
+from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, sum_IoU, MRIDataset, Combined_Loss
 
 def train(model, device, criterion, optimizer, dataloaders, scheduler, num_epochs):
     since = time.time()
@@ -110,7 +110,7 @@ if __name__ == '__main__':
 
     model = get_model_instance_segmentation(num_classes = 2)
 
-    criterion = CE_Dice_Loss(device, alpha = 2, beta = 0.8, gamma = 0.75, ce_weights=(0.1, 1))
+    criterion = Combined_Loss(device, alpha = 2, beta = 0.8, gamma = 0.75, ce_weights=(0.1, 1))
     optimizer = optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 60, gamma = 0.1)
 

@@ -1,0 +1,1 @@
+# Makes FCNResNet_Segmentation a module.

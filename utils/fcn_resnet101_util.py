@@ -91,7 +91,7 @@ class MRIDataset(Dataset):
         scan = np.delete(scan, 3, axis = 3) # (D * H * W * 3)
         return scan
     
-class CE_Dice_Loss(nn.Module): # Need to complete ----
+class Combined_Loss(nn.Module): # Need to complete ----
     '''
     A custom loss function class for a combined cross-entropy and DICE loss.
     '''

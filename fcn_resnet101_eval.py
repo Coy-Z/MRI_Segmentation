@@ -6,7 +6,12 @@ import torch
 from torchvision.transforms import v2 as T
 from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, grayscale_to_rgb, get_transform
 
-val_transform = get_transform(data='input')
+val_transform = T.Compose([
+    T.ToImage(),
+    T.ToDtype(torch.float32, scale=True),
+    T.Resize(size=(50, 50), interpolation=T.InterpolationMode.BILINEAR),
+    T.Lambda(clip_and_scale)
+])
 
 def evaluation(model, scan, device):
     '''
@@ -18,7 +23,6 @@ def evaluation(model, scan, device):
     Returns
         masks: a tensor of masks, the same shape as the images array
     '''
-
     if model.training:
         model.eval()
     with torch.inference_mode():
@@ -36,7 +40,7 @@ model.to(device)
 
 # Load data: Optionally apply Gaussian smoothing
 #images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)
-images = np.load('data/magn/Aorta.npy')
+images = np.load('data/magn/Carotid.npy')
 
 # Inference
 masks = evaluation(model, images, device)

@@ -18,7 +18,9 @@ producing high-quality artificial data to train the model on. Some demonstrative
 shown below.
 
 ![Aorta](images/aorta.png)
+*Figure 1: This is a slice of the Aorta density scan.*
 
 ![Carotid](images/carotid.png)
+*Figure 2: This is a slice of the Carotid density scan.*
 
 Note the data is not yet publicly available.

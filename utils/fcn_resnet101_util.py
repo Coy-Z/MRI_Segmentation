@@ -4,9 +4,9 @@ import os
 import torch
 import torch.nn as nn
 import torchvision
+from torchvision.transforms import v2 as T
 from torch.utils.data import Dataset
 from typing import Sequence
-
 
 class MRIDataset(Dataset):
     '''
@@ -91,7 +91,7 @@ class MRIDataset(Dataset):
         scan = np.delete(scan, 3, axis = 3) # (D * H * W * 3)
         return scan
     
-class Combined_Loss(nn.Module): # Need to complete ----
+class Combined_Loss(nn.Module):
     '''
     A custom loss function class for a combined cross-entropy and DICE loss.
     '''
@@ -267,6 +267,23 @@ def get_model_instance_segmentation(num_classes : int, trained : bool = False) -
         model.load_state_dict(torch.load('model_params.pth', weights_only = True))
     return model
 
-def get_transform(phase : str = 'val'):
-    # Need to complete. ----
-    return
+def get_transform(data: str = 'target', phase: str = 'train') -> T.Compose:
+    '''
+    Get the appropriate transform for the input data.
+    Args:
+        phase (str): The phase of the dataset, either 'train' or 'val'.
+        data (str): The type of input data, either 'input' for scans or 'target' for masks.
+    Returns:
+        transform (T.Compose): The composed transform for the specified input type.
+    '''
+    # Note: BILINEAR for images (smooth), NEAREST for masks (preserve labels)
+    if data == 'target':
+        interpolation = T.InterpolationMode.NEAREST
+    else: interpolation = T.InterpolationMode.BILINEAR
+    if phase == 'train':
+        return T.Compose([
+            T.ToImage(),
+            T.ToDtype(torch.float32, scale=True),
+            T.RandomResizedCrop(size = (50, 50), scale = (0.5, 1.5), interpolation = interpolation),  # vary size
+            T.Lambda(clip_and_scale)
+        ])

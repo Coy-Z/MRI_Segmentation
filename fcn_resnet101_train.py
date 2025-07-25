@@ -1,17 +1,28 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import time
 import os
 import torch
-import torch.nn as nn
 import torch.optim as optim
-import torchvision
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
-from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, sum_IoU, MRIDataset, Combined_Loss
+from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, sum_IoU, get_transform, MRIDataset, Combined_Loss
 
 def train(model, device, criterion, optimizer, dataloaders, scheduler, num_epochs):
+    """
+    Trains the model and returns the best model based on validation IoU.
+
+    Args:
+        model: The segmentation model to train.
+        device: Device to use ('cuda' or 'cpu').
+        criterion: Loss function.
+        optimizer: Optimizer.
+        dataloaders: Dict of DataLoader objects for 'train' and 'val'.
+        scheduler: Learning rate scheduler.
+        num_epochs: Number of epochs to train.
+
+    Returns:
+        model: The trained model with the best validation IoU.
+    """
     since = time.time()
     model = model.to(device)
     # Create a temporary directory to save training checkpoints
@@ -43,8 +54,8 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, num_epoch
                     scan = scan.to(device).squeeze(0)
                     mask3d = mask3d.to(device).squeeze(0).long()
 
-                    # Forward
-                    # Track history if only in train
+                    # Forward pass: Track history if in training phase
+                    # Note: model expects a batch dimension, so scan is (1 * D * H
                     with torch.set_grad_enabled(phase == 'train'):
                         outputs = model(scan)
                         pred_mask3d_logits = outputs['out']
@@ -55,10 +66,10 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, num_epoch
                             loss.backward()
                             optimizer.step()
                     
-                    # Statistics
+                    # Accumulate Statistics
                     running_loss += loss.item() * scan.size(0) # Ensure the criterion reduction parameter is 'mean'
 
-                    acc_IoU += sum_IoU(pred_mask3d, mask3d) # Complete
+                    acc_IoU += sum_IoU(pred_mask3d, mask3d)
                 if phase == 'train':
                     scheduler.step()
                 
@@ -80,40 +91,33 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, num_epoch
     return model
 
 if __name__ == '__main__':
+    # Select device
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
     print(f'Using {device} device.')
 
-    # Define transforms. Training transform is transform and augment. Validation transform is just transform.
-    transform = T.Compose([
-        T.ToImage(),
-        T.ToDtype(torch.float32, scale = True),
-        T.Resize(size = (50, 50), interpolation=T.InterpolationMode.BILINEAR),
-        T.Lambda(clip_and_scale)
-    ])
-    target_transform = T.Compose([
-        T.ToImage(),
-        T.ToDtype(torch.float32, scale = True),
-        T.Resize(size = (50, 50), interpolation=T.InterpolationMode.NEAREST),
-        T.Lambda(clip_and_scale)
-    ])
+    # Define transforms.
+    # Augments are random flips, which are useful for training but not validation.
+    transform = get_transform(data='input')
+    target_transform = get_transform(data='target')
     augment = T.Compose([
         T.RandomHorizontalFlip(p = 0.5),
         T.RandomVerticalFlip(p = 0.5)
     ])
 
-    # Set up datasets
+    # Set up datasets and dataloaders
     data_dir = 'data'
     image_datasets = {x : MRIDataset(os.path.join(data_dir, x), x, transform, target_transform, augment) for x in ['train', 'val']}
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
-
     dataloaders = {x: DataLoader(image_datasets[x], batch_size = 1, shuffle = True, num_workers = 0, persistent_workers = False) for x in ['train', 'val']}
-
+    
+    # Initialize model, loss, optimizer, and scheduler
     model = get_model_instance_segmentation(num_classes = 2)
-
     criterion = Combined_Loss(device, alpha = 2, beta = 0.8, gamma = 0.75, ce_weights=(0.1, 1))
     optimizer = optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 60, gamma = 0.1)
 
+    # Train the model
     model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, num_epochs = 100)
 
+    # Save the model parameters
     torch.save(model.state_dict(), 'model_params.pth')

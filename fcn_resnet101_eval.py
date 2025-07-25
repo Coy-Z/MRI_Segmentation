@@ -3,16 +3,10 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 import scipy
 import torch
-import torch.nn as nn
-import torchvision
 from torchvision.transforms import v2 as T
-from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, grayscale_to_rgb
+from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, grayscale_to_rgb, get_transform
 
-val_transform = T.Compose([
-    T.ToImage(),
-    T.ToDtype(torch.float32, scale=True),
-    T.Lambda(clip_and_scale)
-    ])
+val_transform = get_transform(data='input')
 
 def evaluation(model, scan, device):
     '''
@@ -35,17 +29,19 @@ def evaluation(model, scan, device):
     masks = preds.squeeze().cpu()
     return masks
 
+# Device and model setup
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-
 model = get_model_instance_segmentation(num_classes = 2, trained = True)
 model.to(device)
 
+# Load data: Optionally apply Gaussian smoothing
 #images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)
 images = np.load('data/magn/Aorta.npy')
 
+# Inference
 masks = evaluation(model, images, device)
 
-# ---- Graphic display of results ----
+# Visualization
 pcm = []
 fig, ax = plt.subplots(1, 2, figsize = (10,6))
 pcm.append(ax[0].imshow(images[13], cmap = 'bone'))

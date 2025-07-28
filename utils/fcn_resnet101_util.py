@@ -101,8 +101,8 @@ class Combined_Loss(nn.Module):
         Initialise the CE_Dice_Loss daughter class of torch.nn.Module.
 
         Args:
-            alpha (float): Relative weighting of Cross-Entropy and Dice losses (N.B. only relative magnitude matters).
-            beta (float): Relative weighting of false positives and false negatives in Tversky loss.
+            alpha (float): Relative weighting of Cross-Entropy and Dice losses (N.B. only relative magnitude matters, i.e. alpha = 0 -> Cross-Entropy loss dominates).
+            beta (float): Relative weighting of false positives and false negatives in Tversky loss (i.e. beta = 0 -> no false negatives, beta = 1 -> no false positives).
             gamma (float): The Focal loss exponent.
             epsilon (float): The smoothing factor.
             ce_weights (iterable): The relative weighting of classes within the Cross-Entropy loss.
@@ -284,6 +284,7 @@ def get_transform(data: str = 'target', phase: str = 'train') -> T.Compose:
         return T.Compose([
             T.ToImage(),
             T.ToDtype(torch.float32, scale=True),
-            T.RandomResizedCrop(size = (50, 50), scale = (0.5, 1.5), interpolation = interpolation),  # vary size
+            T.Resize(size=(50, 50), interpolation=interpolation),
+            #T.RandomResizedCrop(size = (50, 50), scale = (0.5, 1.5), interpolation = interpolation),  # vary size
             T.Lambda(clip_and_scale)
         ])

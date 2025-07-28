@@ -112,12 +112,12 @@ if __name__ == '__main__':
     
     # Initialize model, loss, optimizer, and scheduler
     model = get_model_instance_segmentation(num_classes = 2)
-    criterion = Combined_Loss(device, alpha = 2, beta = 0.8, gamma = 0.75, ce_weights=(0.1, 1))
-    optimizer = optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9)
+    criterion = Combined_Loss(device, alpha = 0.7, beta = 0.8, gamma = 0.75, ce_weights=(0.1, 1))
+    optimizer = optim.SGD(model.parameters(), lr = 0.005, momentum = 0.9)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 40, gamma = 0.1)
 
     # Train the model
-    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, num_epochs = 70)
+    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, num_epochs = 60)
 
     # Save the model parameters
     torch.save(model.state_dict(), 'model_params.pth')

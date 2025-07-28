@@ -40,7 +40,7 @@ model.to(device)
 
 # Load data: Optionally apply Gaussian smoothing
 #images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)
-images = np.load('data/magn/Carotid.npy')
+images = np.load('data/magn/Aorta.npy')
 
 # Inference
 masks = evaluation(model, images, device)
@@ -60,5 +60,16 @@ def updateAnim(frame):
     pcm[1].set_data(masks[frame])
     return pcm
 
+# Create animation and keep reference to prevent garbage collection
 ani = FuncAnimation(fig, updateAnim, frames = images.shape[0], interval = 100, blit = False)
-plt.show()
+
+# Save animation as GIF to prevent the warning and ensure it's properly rendered
+print("Saving animation as GIF...")
+ani.save('segmentation_animation.gif', writer='pillow', fps=10)
+print("Animation saved as segmentation_animation.gif")
+
+# Optionally show the plot if display is available
+try:
+    plt.show(block=True)
+except:
+    print("Display not available, animation saved to file instead")

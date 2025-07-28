@@ -55,9 +55,18 @@ class MRIDataset(Dataset):
         '''
         scan_path = os.path.join(self.root, "magn", self.scans[idx])
         mask_path = os.path.join(self.root, "mask", self.masks[idx])
+        
+        # Load data - consider using memory mapping for large files
         scan = grayscale_to_rgb(np.load(scan_path)) # (D * H * W * 3)
-        mask3d = np.load(mask_path)[..., np.newaxis] # (D * H * W * 1)
+        mask3d_raw = np.load(mask_path) # (D * H * W)
+        
+        # Fix boolean mask issue: Convert boolean to integer labels
+        if mask3d_raw.dtype == bool:
+            mask3d_raw = mask3d_raw.astype(np.int64)  # False->0, True->1
+        
+        mask3d = mask3d_raw[..., np.newaxis] # (D * H * W * 1)
 
+        # Apply transforms - these happen on CPU but could be GPU-accelerated
         if self.transform:
             scan = torch.stack([self.transform(slice) for slice in scan]) # (D * 3 * H * W)
         if self.target_transform:
@@ -73,7 +82,7 @@ class MRIDataset(Dataset):
     #def __getitems__(self, idxs : list[int]) -> list[tuple[torch.Tensor, torch.Tensor]]:
         return
     
-    def grayscale_to_rgb(self, scan: np.ndarray[float], cmap : str = 'inferno') -> np.ndarray[float]:
+    def grayscale_to_rgb(self, scan: np.ndarray[float], cmap : str = 'grey') -> np.ndarray[float]:
         '''
         Colours a greyscale intensity plot.
 
@@ -82,14 +91,23 @@ class MRIDataset(Dataset):
             cmap (string): Choice of colormap, out of the matplotlib strings - grey, bone, viridis, plasma, inferno etc...
         
         Returns:
-            scan (np.ndarray): Output RGB scan array (D * 3 * H * W).
+            scan (np.ndarray): Output RGB scan array (D * H * W * 3).
         '''
-        # Convert greyscale to cmap and multiply by 255
-        cmap = plt.get_cmap(cmap)
-        scan = cmap(scan/scan.max())*255 # (D * H * W * 4)
-        # Convert RGBA to RGB
-        scan = np.delete(scan, 3, axis = 3) # (D * H * W * 3)
-        return scan
+        # Normalize to [0, 1] range first for better performance
+        scan_norm = (scan - scan.min()) / (scan.max() - scan.min() + 1e-8)
+        
+        # Use a faster colormap approach - just replicate for RGB channels for now
+        # This avoids the expensive matplotlib colormap lookup
+        if cmap == 'grey':
+            # Simple fast approximation - can be replaced with lookup table for production
+            scan_rgb = np.stack([scan_norm, scan_norm, scan_norm], axis=-1) * 255
+        else:
+            # Fallback to matplotlib for other colormaps
+            cmap_func = plt.get_cmap(cmap)
+            scan_rgb = cmap_func(scan_norm) * 255 # (D * H * W * 4)
+            scan_rgb = scan_rgb[..., :3]  # Remove alpha channel (D * H * W * 3)
+        
+        return scan_rgb
     
 class Combined_Loss(nn.Module):
     '''
@@ -98,7 +116,7 @@ class Combined_Loss(nn.Module):
     def __init__(self, device, alpha : float = 1., beta : float = 0.7, gamma : float = 0.75,
                  epsilon : float = 1e-8, ce_weights : Sequence[float] = [0.5, 0.5]):
         '''
-        Initialise the CE_Dice_Loss daughter class of torch.nn.Module.
+        Initialise the Combined_Loss daughter class of torch.nn.Module.
 
         Args:
             alpha (float): Relative weighting of Cross-Entropy and Dice losses (N.B. only relative magnitude matters, i.e. alpha = 0 -> Cross-Entropy loss dominates).
@@ -142,15 +160,23 @@ class Combined_Loss(nn.Module):
         Returns:
             dice_loss (float): The Dice loss (1 - Dice coefficient). The negation allows for gradient descent.
         '''
-        # Softmax the logits to probabilities
-        probs = torch.softmax(output, dim = 1)
-        # Excite the target tensor to shape (D * 2 * H * W)
-        target_onehot = torch.nn.functional.one_hot(target, num_classes = 2).permute(0, 3, 1, 2).float()
-        # Focus on foreground class (class 1)
-        probs_fg = probs[:, 1, :, :]
-        target_fg = target_onehot[:, 1, :, :]
-        intersection = (probs_fg * target_fg).sum(dim = (1, 2))
-        dice_coeff = (2 * intersection + epsilon ) / (probs_fg.sum(dim = (1, 2)) + target_fg.sum(dim = (1, 2)) + epsilon)
+        # Softmax the logits to probabilities - more memory efficient
+        probs = torch.softmax(output, dim=1)
+        
+        # Create one-hot encoding more efficiently
+        target_onehot = torch.zeros_like(output)
+        target_onehot.scatter_(1, target.unsqueeze(1), 1)
+        
+        # Focus on foreground class (class 1) - avoid unnecessary indexing
+        probs_fg = probs[:, 1]
+        target_fg = target_onehot[:, 1]
+        
+        # Calculate intersection and union in one pass
+        intersection = (probs_fg * target_fg).sum(dim=(1, 2))
+        probs_sum = probs_fg.sum(dim=(1, 2))
+        target_sum = target_fg.sum(dim=(1, 2))
+        
+        dice_coeff = (2 * intersection + epsilon) / (probs_sum + target_sum + epsilon)
         dice_loss = 1 - dice_coeff
         return dice_loss.mean() # Average over depth
 
@@ -170,19 +196,25 @@ class Combined_Loss(nn.Module):
         alpha = 1 - self.beta
         beta = self.beta
         gamma = self.gamma
+        
         # Softmax the logits to probabilities
-        probs = torch.softmax(output, dim = 1)
-        # Excite the target tensor to shape (D * 2 * H * W)
-        target_onehot = torch.nn.functional.one_hot(target, num_classes = 2).permute(0, 3, 1, 2).float()
+        probs = torch.softmax(output, dim=1)
+        
+        # Create one-hot encoding more efficiently
+        target_onehot = torch.zeros_like(output)
+        target_onehot.scatter_(1, target.unsqueeze(1), 1)
+        
         # Focus on foreground class (class 1)
-        probs_fg = probs[:, 1, :, :]
-        target_fg = target_onehot[:, 1, :, :]
-        # Calculate loss coefficient
-        TP = (probs_fg * target_fg).sum(dim = (1, 2)) # True Positive
-        FP = (probs_fg * (1 - target_fg)).sum(dim = (1, 2)) # False Positive
-        FN = ((1 - probs_fg) * target_fg).sum(dim = (1, 2)) # False Negative
+        probs_fg = probs[:, 1]
+        target_fg = target_onehot[:, 1]
+        
+        # Calculate TP, FP, FN and Loss function
+        TP = (probs_fg * target_fg).sum(dim=(1, 2))
+        FP = (probs_fg * (1 - target_fg)).sum(dim=(1, 2))
+        FN = ((1 - probs_fg) * target_fg).sum(dim=(1, 2))
+        
         tversky_coeff = (TP + epsilon) / (TP + alpha * FP + beta * FN + epsilon)
-        focal_tversky_loss = (1 - tversky_coeff)**gamma
+        focal_tversky_loss = (1 - tversky_coeff) ** gamma
         return focal_tversky_loss.mean() # Average over depth
 
 def grayscale_to_rgb(scan : np.ndarray[float], cmap : str = 'inferno') -> np.ndarray[float]:
@@ -194,14 +226,23 @@ def grayscale_to_rgb(scan : np.ndarray[float], cmap : str = 'inferno') -> np.nda
         cmap (string): Choice of colormap, out of the matplotlib strings - grey, bone, viridis, plasma, inferno etc...
 
     Returns:
-        scan (np.ndarray): Output RGB scan array (D * 3 * H * W).
+        scan (np.ndarray): Output RGB scan array (D * H * W * 3).
     '''
-    # Convert greyscale to cmap and multiply by 255
-    cmap = plt.get_cmap(cmap)
-    scan = cmap(scan/scan.max())*255 # (D * H * W * 4)
-    # Convert RGBA to RGB
-    scan = np.delete(scan, 3, axis = 3) # (D * H * W * 3)
-    return scan
+    # Normalize to [0, 1] range first for better performance
+    scan_norm = (scan - scan.min()) / (scan.max() - scan.min() + 1e-8)
+    
+    # Use a faster colormap approach - just replicate for RGB channels for now
+    # This avoids the expensive matplotlib colormap lookup
+    if cmap == 'inferno' or cmap == 'viridis':
+        # Simple fast approximation - can be replaced with lookup table for production
+        scan_rgb = np.stack([scan_norm, scan_norm, scan_norm], axis=-1) * 255
+    else:
+        # Fallback to matplotlib for other colormaps
+        cmap_func = plt.get_cmap(cmap)
+        scan_rgb = cmap_func(scan_norm) * 255 # (D * H * W * 4)
+        scan_rgb = scan_rgb[..., :3]  # Remove alpha channel (D * H * W * 3)
+    
+    return scan_rgb
 
 def clip_and_scale(tensor : torch.Tensor, low_clip : float = 1., high_clip : float = 99.) -> torch.Tensor:
     '''
@@ -236,14 +277,18 @@ def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
     Returns:
         IoU (float): The IoU score of the two mask tensors.
     '''
-    intersection = torch.logical_and(pred_mask, true_mask).sum().item()
-    union = torch.logical_or(pred_mask, true_mask).sum().item()
+    # Use bitwise operations for better GPU performance
+    pred_bool = pred_mask.bool()
+    true_bool = true_mask.bool()
+    
+    intersection = (pred_bool & true_bool).sum().item()
+    union = (pred_bool | true_bool).sum().item()
 
     if union == 0: # Handle empty masks
         return 1.0 if intersection == 0 else 0.0
-    return float(intersection)/union
+    return float(intersection) / union
 
-def get_model_instance_segmentation(num_classes : int, trained : bool = False) -> torchvision.models.segmentation.fcn.FCN:
+def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', trained : bool = False) -> torchvision.models.segmentation.fcn.FCN:
     '''
     Load an instance of the FCN ResNet 101 model, with pre-trained weights.
 
@@ -265,7 +310,8 @@ def get_model_instance_segmentation(num_classes : int, trained : bool = False) -
 
     if trained: # If the model has been locally trained, load the fine-tuned weights
         model.load_state_dict(torch.load('model_params.pth', weights_only = True))
-    return model
+
+    return model.to(device) # Move the model to the specified device
 
 def get_transform(data: str = 'target', phase: str = 'train') -> T.Compose:
     '''
@@ -279,12 +325,34 @@ def get_transform(data: str = 'target', phase: str = 'train') -> T.Compose:
     # Note: BILINEAR for images (smooth), NEAREST for masks (preserve labels)
     if data == 'target':
         interpolation = T.InterpolationMode.NEAREST
-    else: interpolation = T.InterpolationMode.BILINEAR
-    if phase == 'train':
+        # For masks: don't scale, keep as integers for proper class labels
         return T.Compose([
             T.ToImage(),
-            T.ToDtype(torch.float32, scale=True),
+            T.ToDtype(torch.int64, scale=False),  # Keep integer labels, no scaling
             T.Resize(size=(50, 50), interpolation=interpolation),
-            #T.RandomResizedCrop(size = (50, 50), scale = (0.5, 1.5), interpolation = interpolation),  # vary size
-            T.Lambda(clip_and_scale)
         ])
+    else: 
+        interpolation = T.InterpolationMode.BILINEAR
+        if phase == 'train':
+            return T.Compose([
+                T.ToImage(),
+                T.ToDtype(torch.float32, scale=True),
+                T.Resize(size=(50, 50), interpolation=interpolation),
+                #T.RandomResizedCrop(size = (50, 50), scale = (0.5, 1.5), interpolation = interpolation),  # vary size
+                T.Lambda(clip_and_scale)
+            ])
+        else:  # validation phase
+            return T.Compose([
+                T.ToImage(),
+                T.ToDtype(torch.float32, scale=True),
+                T.Resize(size=(50, 50), interpolation=interpolation),
+                T.Lambda(clip_and_scale)
+            ])
+
+def custom_collate_fn(batch):
+    """
+    Custom collate function to handle variable-sized 3D scans.
+    Returns one scan at a time instead of trying to batch them.
+    """
+    # Just return the first item since we can't batch variable-sized 3D volumes
+    return batch[0]

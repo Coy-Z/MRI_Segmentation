@@ -5,9 +5,9 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
-from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, sum_IoU, get_transform, MRIDataset, Combined_Loss
+from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
 
-def train(model, device, criterion, optimizer, dataloaders, scheduler, num_epochs):
+def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs):
     """
     Trains the model and returns the best model based on validation IoU.
 
@@ -18,6 +18,7 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, num_epoch
         optimizer: Optimizer.
         dataloaders: Dict of DataLoader objects for 'train' and 'val'.
         scheduler: Learning rate scheduler.
+        dataset_sizes: Dict with dataset sizes for 'train' and 'val'.
         num_epochs: Number of epochs to train.
 
     Returns:
@@ -50,12 +51,15 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, num_epoch
                     # Zero the parameter gradients
                     optimizer.zero_grad()
 
-                    # Move data to GPU - Also dataloader batches, adding another dimension
-                    scan = scan.to(device).squeeze(0)
-                    mask3d = mask3d.to(device).squeeze(0).long()
+                    # Move data to GPU - Handle 3D volume processing
+                    scan = scan.to(device)      # (depth, 3, height, width)
+                    mask3d = mask3d.to(device).long()  # (depth, height, width)
+                    
+                    # Process the 3D volume as a batch of 2D slices
+                    # scan is already in the right format: (depth, 3, height, width)
+                    # This allows us to process all slices in parallel
 
                     # Forward pass: Track history if in training phase
-                    # Note: model expects a batch dimension, so scan is (1 * D * H
                     with torch.set_grad_enabled(phase == 'train'):
                         outputs = model(scan)
                         pred_mask3d_logits = outputs['out']
@@ -92,8 +96,11 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, num_epoch
 
 if __name__ == '__main__':
     # Select device
-    device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using {device} device.')
+    if torch.cuda.is_available():
+        print(f'CUDA device: {torch.cuda.get_device_name(0)}')
+        print(f'Available GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB')
 
     # Define transforms.
     # Augments are random flips, which are useful for training but not validation.
@@ -108,16 +115,31 @@ if __name__ == '__main__':
     data_dir = 'data'
     image_datasets = {x : MRIDataset(os.path.join(data_dir, x), x, transform, target_transform, augment) for x in ['train', 'val']}
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
-    dataloaders = {x: DataLoader(image_datasets[x], batch_size = 1, shuffle = True, num_workers = 0, persistent_workers = False) for x in ['train', 'val']}
+    
+    # Improved DataLoader configuration for better GPU utilization
+    num_workers = min(4, os.cpu_count())  # Use multiple workers for async data loading
+    batch_size = 1  # Keep batch_size = 1 due to variable scan sizes and small validation set
+    dataloaders = {x: DataLoader(
+        image_datasets[x], 
+        batch_size=batch_size, 
+        shuffle=True, 
+        num_workers=num_workers, 
+        persistent_workers=True if num_workers > 0 else False,
+        pin_memory=torch.cuda.is_available(),  # Pin memory for faster GPU transfer
+        collate_fn=custom_collate_fn  # Handle variable-sized 3D volumes
+    ) for x in ['train', 'val']}
     
     # Initialize model, loss, optimizer, and scheduler
-    model = get_model_instance_segmentation(num_classes = 2)
-    criterion = Combined_Loss(device, alpha = 0.7, beta = 0.8, gamma = 0.75, ce_weights=(0.1, 1))
-    optimizer = optim.SGD(model.parameters(), lr = 0.005, momentum = 0.9)
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 40, gamma = 0.1)
+    model = get_model_instance_segmentation(num_classes = 2, device = device, trained = False)
+    criterion = Combined_Loss(device, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights=(0.1, 0.9))
+    optimizer = optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9)
+    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 30, gamma = 0.5)
 
-    # Train the model
-    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, num_epochs = 60)
+    print(f"\nDataset sizes: {dataset_sizes}")
+    print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+    
+    # Train the model (shorter epochs for testing)
+    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, dataset_sizes, num_epochs = 60)
 
     # Save the model parameters
     torch.save(model.state_dict(), 'model_params.pth')

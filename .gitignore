@@ -20,3 +20,6 @@ data/
 
 # Ignore Paraview files
 *.pvsm
+
+# Ignore .gif files which were used for displaying results
+*.gif

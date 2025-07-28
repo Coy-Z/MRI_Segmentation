@@ -7,7 +7,7 @@ from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
 from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
 
-def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs):
+def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs, patience=15):
     """
     Trains the model and returns the best model based on validation IoU.
 
@@ -20,6 +20,7 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
         scheduler: Learning rate scheduler.
         dataset_sizes: Dict with dataset sizes for 'train' and 'val'.
         num_epochs: Number of epochs to train.
+        patience: Early stopping patience (number of epochs without improvement).
 
     Returns:
         model: The trained model with the best validation IoU.
@@ -31,10 +32,12 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
         best_model_params_path = os.path.join(tempdir, 'best_model_params.pt')
         torch.save(model.state_dict(), best_model_params_path)
         best_IoU = 0.0
+        epochs_no_improve = 0  # Early stopping counter
 
         for epoch in range(num_epochs):
             print(f'Epoch {epoch + 1}/{num_epochs}')
             print('-' * 10)
+            val_IoU = 0.0  # Reset validation IoU for this epoch
 
             # Each epoch has a training and validation phase
             for phase in ['train', 'val']:
@@ -68,14 +71,14 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
 
                         if phase == 'train':
                             loss.backward()
+                            # Add gradient clipping for training stability
+                            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                             optimizer.step()
                     
                     # Accumulate Statistics
                     running_loss += loss.item() * scan.size(0) # Ensure the criterion reduction parameter is 'mean'
 
                     acc_IoU += sum_IoU(pred_mask3d, mask3d)
-                if phase == 'train':
-                    scheduler.step()
                 
                 epoch_loss = running_loss / dataset_sizes[phase]
                 epoch_IoU = acc_IoU / dataset_sizes[phase]
@@ -85,6 +88,19 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
                 if phase == 'val' and epoch_IoU > best_IoU:
                     best_IoU = epoch_IoU
                     torch.save(model.state_dict(), best_model_params_path)
+                    epochs_no_improve = 0  # Reset counter
+                elif phase == 'val':
+                    epochs_no_improve += 1  # Increment counter
+                    val_IoU = epoch_IoU  # Store validation IoU for scheduler
+            
+            # Step scheduler ONCE per epoch using validation IoU (outside the phase loop)
+            scheduler.step(val_IoU)
+            
+            # Early stopping check
+            if epochs_no_improve >= patience:
+                print(f'Early stopping after {epoch + 1} epochs (no improvement for {patience} epochs)')
+                break
+                
             print()
         time_elapsed = time.time() - since
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s.')
@@ -108,7 +124,10 @@ if __name__ == '__main__':
     target_transform = get_transform(data='target')
     augment = T.Compose([
         T.RandomHorizontalFlip(p = 0.5),
-        T.RandomVerticalFlip(p = 0.5)
+        T.RandomVerticalFlip(p = 0.5),
+        T.RandomRotation(degrees=15),  # Add rotation
+        T.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Add translation
+        # Note: ColorJitter might not be suitable for medical images
     ])
 
     # Set up datasets and dataloaders
@@ -132,14 +151,21 @@ if __name__ == '__main__':
     # Initialize model, loss, optimizer, and scheduler
     model = get_model_instance_segmentation(num_classes = 2, device = device, trained = False)
     criterion = Combined_Loss(device, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights=(0.1, 0.9))
-    optimizer = optim.SGD(model.parameters(), lr = 0.001, momentum = 0.9)
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size = 30, gamma = 0.5)
+    
+    # Use AdamW with weight decay for better regularization
+    optimizer = optim.AdamW(model.parameters(), lr = 0.0001, weight_decay = 0.01)
+    
+    # More conservative learning rate schedule
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='max', factor=0.5, patience=10, min_lr=1e-7
+    )
 
     print(f"\nDataset sizes: {dataset_sizes}")
     print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     
-    # Train the model (shorter epochs for testing)
-    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, dataset_sizes, num_epochs = 60)
+    # Train the model with early stopping
+    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, dataset_sizes, 
+                  num_epochs=100, patience=20)
 
     # Save the model parameters
     torch.save(model.state_dict(), 'model_params.pth')

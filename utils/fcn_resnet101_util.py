@@ -24,10 +24,7 @@ class MRIDataset(Dataset):
             
         N.B. transform and augment are separate because we must merge the scan and mask to ensure consistent augmentation.
         '''
-        # Currently incomplete, depends on how data is laid out. ----
         super().__init__()
-        #self.scans = np.array([np.load(f'{root}/magn.npy')]) # (N * D * H * W)
-        #self.masks = np.array([np.load(f'{root}/mask.npy')]) # (N * D * H * W)
         self.scans = list(sorted(os.listdir(os.path.join(root, "magn")))) # (N * D * H * W)
         self.masks = list(sorted(os.listdir(os.path.join(root, "mask")))) # (N * D * H * W)
         self.root = root
@@ -56,17 +53,16 @@ class MRIDataset(Dataset):
         scan_path = os.path.join(self.root, "magn", self.scans[idx])
         mask_path = os.path.join(self.root, "mask", self.masks[idx])
         
-        # Load data - consider using memory mapping for large files
+        # Load data
         scan = grayscale_to_rgb(np.load(scan_path)) # (D * H * W * 3)
         mask3d_raw = np.load(mask_path) # (D * H * W)
         
-        # Fix boolean mask issue: Convert boolean to integer labels
         if mask3d_raw.dtype == bool:
             mask3d_raw = mask3d_raw.astype(np.int64)  # False->0, True->1
         
         mask3d = mask3d_raw[..., np.newaxis] # (D * H * W * 1)
 
-        # Apply transforms - these happen on CPU but could be GPU-accelerated
+        # Apply transforms
         if self.transform:
             scan = torch.stack([self.transform(slice) for slice in scan]) # (D * 3 * H * W)
         if self.target_transform:
@@ -93,11 +89,9 @@ class MRIDataset(Dataset):
         Returns:
             scan (np.ndarray): Output RGB scan array (D * H * W * 3).
         '''
-        # Normalize to [0, 1] range first for better performance
+        # Normalize to [0, 1] range first
         scan_norm = (scan - scan.min()) / (scan.max() - scan.min() + 1e-8)
-        
-        # Use a faster colormap approach - just replicate for RGB channels for now
-        # This avoids the expensive matplotlib colormap lookup
+
         if cmap == 'grey':
             # Simple fast approximation - can be replaced with lookup table for production
             scan_rgb = np.stack([scan_norm, scan_norm, scan_norm], axis=-1) * 255
@@ -160,14 +154,14 @@ class Combined_Loss(nn.Module):
         Returns:
             dice_loss (float): The Dice loss (1 - Dice coefficient). The negation allows for gradient descent.
         '''
-        # Softmax the logits to probabilities - more memory efficient
+        # Softmax the logits to probabilities
         probs = torch.softmax(output, dim=1)
-        
-        # Create one-hot encoding more efficiently
+
+        # Create one-hot encoding
         target_onehot = torch.zeros_like(output)
         target_onehot.scatter_(1, target.unsqueeze(1), 1)
         
-        # Focus on foreground class (class 1) - avoid unnecessary indexing
+        # Focus on foreground class (class 1)
         probs_fg = probs[:, 1]
         target_fg = target_onehot[:, 1]
         
@@ -200,7 +194,7 @@ class Combined_Loss(nn.Module):
         # Softmax the logits to probabilities
         probs = torch.softmax(output, dim=1)
         
-        # Create one-hot encoding more efficiently
+        # Create one-hot encoding
         target_onehot = torch.zeros_like(output)
         target_onehot.scatter_(1, target.unsqueeze(1), 1)
         
@@ -228,11 +222,9 @@ def grayscale_to_rgb(scan : np.ndarray[float], cmap : str = 'inferno') -> np.nda
     Returns:
         scan (np.ndarray): Output RGB scan array (D * H * W * 3).
     '''
-    # Normalize to [0, 1] range first for better performance
+    # Normalize to [0, 1] range first
     scan_norm = (scan - scan.min()) / (scan.max() - scan.min() + 1e-8)
-    
-    # Use a faster colormap approach - just replicate for RGB channels for now
-    # This avoids the expensive matplotlib colormap lookup
+
     if cmap == 'inferno' or cmap == 'viridis':
         # Simple fast approximation - can be replaced with lookup table for production
         scan_rgb = np.stack([scan_norm, scan_norm, scan_norm], axis=-1) * 255
@@ -277,7 +269,6 @@ def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
     Returns:
         IoU (float): The IoU score of the two mask tensors.
     '''
-    # Use bitwise operations for better GPU performance
     pred_bool = pred_mask.bool()
     true_bool = true_mask.bool()
     
@@ -339,6 +330,7 @@ def get_transform(data: str = 'target', phase: str = 'train') -> T.Compose:
                 T.ToDtype(torch.float32, scale=True),
                 T.Resize(size=(50, 50), interpolation=interpolation),
                 #T.RandomResizedCrop(size = (50, 50), scale = (0.5, 1.5), interpolation = interpolation),  # vary size
+                T.GaussianBlur(kernel_size = 5, sigma = 0.1),
                 T.Lambda(clip_and_scale)
             ])
         else:  # validation phase
@@ -346,13 +338,13 @@ def get_transform(data: str = 'target', phase: str = 'train') -> T.Compose:
                 T.ToImage(),
                 T.ToDtype(torch.float32, scale=True),
                 T.Resize(size=(50, 50), interpolation=interpolation),
+                T.GaussianBlur(kernel_size = 5, sigma = 0.1),
                 T.Lambda(clip_and_scale)
             ])
 
 def custom_collate_fn(batch):
     """
     Custom collate function to handle variable-sized 3D scans.
-    Returns one scan at a time instead of trying to batch them.
+    Returns the first item since we can't batch variable-sized 3D volumes
     """
-    # Just return the first item since we can't batch variable-sized 3D volumes
     return batch[0]

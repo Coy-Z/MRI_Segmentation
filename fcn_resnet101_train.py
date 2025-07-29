@@ -54,13 +54,12 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
                     # Zero the parameter gradients
                     optimizer.zero_grad()
 
-                    # Move data to GPU - Handle 3D volume processing
-                    scan = scan.to(device)      # (depth, 3, height, width)
-                    mask3d = mask3d.to(device).long()  # (depth, height, width)
-                    
+                    # Move data to GPU
+                    scan = scan.to(device)      # (D * 3 * H * W)
+                    mask3d = mask3d.to(device).long()  # (D * H * W)
+
                     # Process the 3D volume as a batch of 2D slices
-                    # scan is already in the right format: (depth, 3, height, width)
-                    # This allows us to process all slices in parallel
+                    # The scans are already in the right format -> this allows us to process all slices in parallel
 
                     # Forward pass: Track history if in training phase
                     with torch.set_grad_enabled(phase == 'train'):
@@ -93,7 +92,7 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
                     epochs_no_improve += 1  # Increment counter
                     val_IoU = epoch_IoU  # Store validation IoU for scheduler
             
-            # Step scheduler ONCE per epoch using validation IoU (outside the phase loop)
+            # Step scheduler once per epoch using validation IoU (outside the phase loop)
             scheduler.step(val_IoU)
             
             # Early stopping check
@@ -119,15 +118,15 @@ if __name__ == '__main__':
         print(f'Available GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB')
 
     # Define transforms.
-    # Augments are random flips, which are useful for training but not validation.
+    # Augments are random changes, which are useful for training but not validation.
     transform = get_transform(data='input')
     target_transform = get_transform(data='target')
     augment = T.Compose([
+        T.GaussianNoise(mean = 0, sigma = 0.2),
         T.RandomHorizontalFlip(p = 0.5),
         T.RandomVerticalFlip(p = 0.5),
-        T.RandomRotation(degrees=15),  # Add rotation
-        T.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Add translation
-        # Note: ColorJitter might not be suitable for medical images
+        T.RandomRotation(degrees = 15),
+        T.RandomAffine(degrees = 0, translate = (0.1, 0.1)),
     ])
 
     # Set up datasets and dataloaders
@@ -152,10 +151,10 @@ if __name__ == '__main__':
     model = get_model_instance_segmentation(num_classes = 2, device = device, trained = False)
     criterion = Combined_Loss(device, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights=(0.1, 0.9))
     
-    # Use AdamW with weight decay for better regularization
+    # Use AdamW with weight decay for regularization
     optimizer = optim.AdamW(model.parameters(), lr = 0.0001, weight_decay = 0.01)
     
-    # More conservative learning rate schedule
+    # Conservative learning rate schedule
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='max', factor=0.5, patience=10, min_lr=1e-7
     )
@@ -163,7 +162,7 @@ if __name__ == '__main__':
     print(f"\nDataset sizes: {dataset_sizes}")
     print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     
-    # Train the model with early stopping
+    # Train the model
     model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, dataset_sizes, 
                   num_epochs=100, patience=20)
 

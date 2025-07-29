@@ -65,7 +65,7 @@ ani = FuncAnimation(fig, updateAnim, frames = images.shape[0], interval = 100, b
 
 # Save animation as GIF to prevent the warning and ensure it's properly rendered
 print("Saving animation as GIF...")
-ani.save('segmentation_animation.gif', writer='pillow', fps=10)
+ani.save('images/segmentation_animation.gif', writer='pillow', fps=10)
 print("Animation saved as segmentation_animation.gif")
 
 # Optionally show the plot if display is available

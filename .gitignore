@@ -22,4 +22,4 @@ data/
 *.pvsm
 
 # Ignore .gif files which were used for displaying results
-*.gif
+#*.gif

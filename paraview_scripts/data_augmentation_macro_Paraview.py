@@ -14,15 +14,12 @@ paramChoices = [
     [1, 3],     # omega4
     [1, 3],     # omega5
     [1, 3],     # omega6
-    [1, 3],     # omega7
-    [1, 3],     # omega8
-    [1, 3],     # omega9
 ]
 
 # Iterate over a range of abg combos.
-for i, (a, b, g, w1, w2, w3, w4, w5, w6, w7, w8, w9) in enumerate(itertools.product(*paramChoices)):
+for i, (a, b, g, w1, w2, w3, w4, w5, w6) in enumerate(itertools.product(*paramChoices)):
     # Define parameters
-    alpha, beta, gamma, omega1, omega2, omega3, omega4, omega5, omega6, omega7, omega8, omega9 = a, b, g, w1, w2, w3, w4, w5, w6, w7, w8, w9  # Warp parameters
+    alpha, beta, gamma, omega1, omega2, omega3, omega4, omega5, omega6 = a, b, g, w1, w2, w3, w4, w5, w6  # Warp parameters
     file_name = f"Aorta_Warp_{i}"          # Output base filename
     field_names = ["magn", "in_"]       # Scalar fields to export
     output_dir = rf"C:\Users\ZHUCK\Uni\UROP25\FCNResNet_Segmentation\data\train"
@@ -49,9 +46,9 @@ for i, (a, b, g, w1, w2, w3, w4, w5, w6, w7, w8, w9) in enumerate(itertools.prod
 
     for i in range(n_points):
         x, y, z = points.GetPoint(i)
-        wx = x + alpha * np.sin(omega1 * y) + beta * np.cos(omega2 * z) + gamma * np.sin(omega3 * x)
-        wy = y + beta  * np.sin(omega4 * z) + gamma * np.cos(omega5 * x) + alpha * np.sin(omega6 * y)
-        wz = z + gamma * np.sin(omega7 * x) + alpha * np.cos(omega8 * y) + beta * np.sin(omega9 * z)
+        wx = x + alpha * np.sin(omega1 * y) + beta * np.cos(omega4 * z)
+        wy = y + beta  * np.sin(omega2 * z) + gamma * np.cos(omega5 * x)
+        wz = z + gamma * np.sin(omega3 * x) + alpha * np.cos(omega6 * y)
 
         wx *= 1.2
         wy *= 1.2

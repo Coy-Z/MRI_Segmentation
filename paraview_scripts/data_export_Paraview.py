@@ -8,7 +8,7 @@ grid.UpdatePipeline()
 vtk_grid = grid.GetClientSideObject().GetOutput()
 
 # Choose your scalar field
-for field_name in ["magn", "in_"]:
+for field_name in ["in_"]:
     vtk_array = vtk_grid.GetPointData().GetArray(field_name)
 
     # Convert to NumPy
@@ -22,11 +22,14 @@ for field_name in ["magn", "in_"]:
     # Reshape to 3D (VTK is x-fastest: Fortran order)
     reshaped_array = flat_array.reshape(dims, order='F')
 
-    file_name = 'Aorta_Warp_1'
+    file_name = 'Aorta'
     if field_name == "magn":
         loc = "magn"
     else: loc = "mask"
     # Save to .npy
-    np.save(rf"C:\Users\ZHUCK\Uni\UROP25\FCNResNet_Segmentation\data\{loc}\{file_name}.npy", reshaped_array)
-    np.save(rf"C:\Users\ZHUCK\Uni\UROP25\FCNResNet_Segmentation\data\train\{loc}\{file_name}.npy", reshaped_array)
+    #np.save(rf"C:\Users\ZHUCK\Uni\UROP25\FCNResNet_Segmentation\data\train\{loc}\{file_name}.npy", reshaped_array)
+    np.save(rf"workspace\fcn_resnet_MRI_seg\data\train\{loc}\{file_name}.npy", reshaped_array)
+    np.save(rf"workspace\fcn_resnet_MRI_seg\data\val\{loc}\{file_name}.npy", reshaped_array)
+
+
     print(f"Saved {field_name}.npy with shape {reshaped_array.shape}")

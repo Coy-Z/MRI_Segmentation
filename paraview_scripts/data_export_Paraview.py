@@ -27,9 +27,9 @@ for field_name in ["in_"]:
         loc = "magn"
     else: loc = "mask"
     # Save to .npy
-    #np.save(rf"C:\Users\ZHUCK\Uni\UROP25\FCNResNet_Segmentation\data\train\{loc}\{file_name}.npy", reshaped_array)
-    np.save(rf"workspace\fcn_resnet_MRI_seg\data\train\{loc}\{file_name}.npy", reshaped_array)
-    np.save(rf"workspace\fcn_resnet_MRI_seg\data\val\{loc}\{file_name}.npy", reshaped_array)
+    np.save(rf"C:\Users\ZHUCK\Uni\UROP25\FCNResNet_Segmentation\data\train\{loc}\{file_name}.npy", reshaped_array)
+    #np.save(rf"workspace\fcn_resnet_MRI_seg\data\train\{loc}\{file_name}.npy", reshaped_array)
+    #np.save(rf"workspace\fcn_resnet_MRI_seg\data\val\{loc}\{file_name}.npy", reshaped_array)
 
 
     print(f"Saved {field_name}.npy with shape {reshaped_array.shape}")

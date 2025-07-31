@@ -1,26 +1,20 @@
 import numpy as np
-import itertools
 import vtk
 from paraview.simple import *
 from vtk.util.numpy_support import vtk_to_numpy
 
-paramChoices = [
-    [0.05, 0.2], # alpha
-    [0.05, 0.2], # beta
-    [0.05, 0.2], # gamma
-    [1, 3],     # omega1
-    [1, 3],     # omega2
-    [1, 3],     # omega3
-    [1, 3],     # omega4
-    [1, 3],     # omega5
-    [1, 3],     # omega6
-]
-
-# Iterate over a range of abg combos.
-for i, (a, b, g, w1, w2, w3, w4, w5, w6) in enumerate(itertools.product(*paramChoices)):
-    # Define parameters
-    alpha, beta, gamma, omega1, omega2, omega3, omega4, omega5, omega6 = a, b, g, w1, w2, w3, w4, w5, w6  # Warp parameters
-    file_name = f"Aorta_Warp_{i}"          # Output base filename
+for i in range(8):
+    # Generate random parameters for warping
+    generator = np.random.default_rng(seed=i)
+    alpha1, alpha2, alpha3, beta1, beta2, beta3, gamma1, gamma2, gamma3 = generator.multivariate_normal(
+        mean = 0.1 * np.ones(9),
+        cov = 0.05 * np.eye(9)
+    )
+    omega1, omega2, omega3, omega4, omega5, omega6, omega7, omega8, omega9 = np.abs(generator.multivariate_normal(
+        mean = 2.0 * np.ones(9),
+        cov = 0.5 * np.eye(9)
+    ))
+    file_name = f"Coarct_Aorta_Warp_{i}"          # Output base filename
     field_names = ["magn", "in_"]       # Scalar fields to export
     output_dir = rf"C:\Users\ZHUCK\Uni\UROP25\FCNResNet_Segmentation\data\train"
 
@@ -46,9 +40,9 @@ for i, (a, b, g, w1, w2, w3, w4, w5, w6) in enumerate(itertools.product(*paramCh
 
     for i in range(n_points):
         x, y, z = points.GetPoint(i)
-        wx = x + alpha * np.sin(omega1 * y) + beta * np.cos(omega4 * z)
-        wy = y + beta  * np.sin(omega2 * z) + gamma * np.cos(omega5 * x)
-        wz = z + gamma * np.sin(omega3 * x) + alpha * np.cos(omega6 * y)
+        wx = x + alpha1 * np.sin(omega1 * y) + alpha2 * np.cos(omega4 * z) + alpha3 * np.sin(omega7 * x)
+        wy = y + beta1 * np.sin(omega2 * z) + beta2 * np.cos(omega5 * x) + beta3 * np.sin(omega8 * y)
+        wz = z + gamma1 * np.sin(omega3 * x) + gamma2 * np.cos(omega6 * y) + gamma3 * np.sin(omega9 * z)
 
         wx *= 1.2
         wy *= 1.2

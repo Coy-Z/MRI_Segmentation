@@ -1,5 +1,6 @@
 # Ignore virtual environments
 fcn_env/
+fcn_env_wsl
 venv/
 env/
 myenv/

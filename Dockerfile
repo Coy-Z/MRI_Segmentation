@@ -1,5 +1,5 @@
 # Use the official FEniCS Docker image as base
-FROM quay.io/fenicsproject/stable:latest
+FROM dolfinx/dolfinx:stable
 
 # Set environment variables to avoid interactive prompts during install
 ENV DEBIAN_FRONTEND=noninteractive

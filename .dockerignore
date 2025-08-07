@@ -15,8 +15,8 @@ Thumbs.db
 # Ignore model weights
 *.pth
 
-# Ignore data files
-data/
+# Ignore paragon files
+data/paragon/
 
 # Ignore Paraview files
 *.pvsm

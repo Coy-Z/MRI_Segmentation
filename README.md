@@ -24,3 +24,11 @@ shown below.
 *Figure 2: This is a slice of the Carotid density scan.*
 
 Note the data is not yet publicly available.
+
+To run this repository, you will need FEniCS support. The easiest (and recommended) way is to use Docker.
+Register for a Docker account and install Docker Desktop for whichever system you work on.
+Once set up, clone the repository to your local computer, and navigate to the project workspace, before running the following lines.
+```bash
+>> docker build -t fcnresnet_segmentation .
+>> docker run --gpus all -it --rm fcnresnet_segmentation
+```

@@ -1,29 +1,26 @@
-# Use the official FEniCS Docker image as base
 FROM dolfinx/dolfinx:stable
 
-# Set environment variables to avoid interactive prompts during install
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PIP_NO_CACHE_DIR=1
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+# Environment (rarely changes) - Layer 1
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies in one layer and clean up
-RUN apt-get update && apt-get install -y \
+# System dependencies (rarely changes) - Layer 2
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update && apt-get install -y \
     python3-pip \
     python3-dev \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && pip3 install --upgrade pip
 
-# Upgrade pip in separate layer
-RUN pip3 install --upgrade pip
-
-# Set working directory early
 WORKDIR /app
 
-# Copy requirements.txt first for better layer caching
+# Copy requirements first (changes occasionally) - Layer 3
 COPY requirements.txt .
 
-# Install lightweight dependencies first (these change less frequently)
-RUN pip3 install --no-cache-dir \
+# Stable utility dependencies (change rarely) - Layer 4
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --no-cache-dir \
     contourpy==1.3.2 \
     cycler==0.12.1 \
     filelock==3.13.1 \
@@ -42,20 +39,22 @@ RUN pip3 install --no-cache-dir \
     sympy==1.13.3 \
     typing_extensions==4.12.2
 
-# Install numpy and scipy (medium weight, math libraries)
-RUN pip3 install --no-cache-dir \
+# Math libraries (change occasionally) - Layer 5
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --no-cache-dir \
     numpy>=2.2.6 \
     scipy>=1.15.0
 
-# Install matplotlib and pillow (image processing)
-RUN pip3 install --no-cache-dir \
+# Image processing libraries - Layer 6
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --no-cache-dir \
     matplotlib==3.10.3 \
     pillow==11.3.0
 
-# Install PyTorch last (heaviest - most likely to fail, so rebuild from here if needed)
-RUN pip3 install --no-cache-dir \
+# Heavy ML dependencies (most likely to fail/change) - Layer 7
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install --no-cache-dir \
     torch torchvision \
     --index-url https://download.pytorch.org/whl/cu129
 
-# Default command
 CMD ["bash"]

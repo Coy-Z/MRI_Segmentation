@@ -15,7 +15,9 @@
       "settings": {
         "terminal.integrated.defaultProfile.linux": "bash",
         "python.defaultInterpreterPath": "/usr/bin/python3",
-        "python.terminal.activateEnvironment": false
+        "python.terminal.activateEnvironment": false,
+        "files.eol": "\n",
+        "git.autocrlf": false
       },
       "extensions": [
         "ms-python.python",
@@ -24,5 +26,11 @@
       ]
     }
   },
-  "remoteUser": "root"
+  "remoteUser": "root",
+  "build": {
+    "args": {
+      "DOCKER_BUILDKIT": "1"
+    }
+  },
+  "postCreateCommand": "git config --global core.autocrlf false && git config --global core.eol lf && git config --global core.filemode false"
 }

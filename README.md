@@ -29,6 +29,6 @@ To run this repository, you will need FEniCS support. The easiest (and recommend
 Register for a Docker account and install Docker Desktop for whichever system you work on.
 Once set up, clone the repository to your local computer, and navigate to the project workspace, before running the following lines.
 ```bash
->> docker build -t fcnresnet_segmentation .
->> docker run --gpus all -it --rm fcnresnet_segmentation
+>> docker build -t fcn_resnet_MRI_seg .
+>> docker run --gpus all -it --rm fcn_resnet_MRI_seg
 ```

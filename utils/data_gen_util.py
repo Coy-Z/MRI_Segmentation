@@ -6,7 +6,7 @@ class SDF_MRI():
     '''
     Class to use Signed Distance Function (SDF) to generate MRI data.
     '''
-    def __init__(self, V: np.ndarray[float], r: float = 5):
+    def __init__(self, V: np.ndarray[float], r: float = 5, centre_var: float = 0.5):
         '''
         Initialize the SDF_MRI class with radius and speed field.
         Args:
@@ -15,15 +15,15 @@ class SDF_MRI():
         '''
         self.sdf = np.zeros_like(V)
         self.V = V
-        self.a, self.b = V.shape
         self.r = r
         self.dt = min(0.05 / self.V.max(), 0.02) # Time step size based on max speed -> enforces CFL conditions
-
+        
         # Set up seed SDF
         # \rho - R for analytical SDF of a circle
-        for i in range(self.a): # Vectorise this
-            for j in range(self.b):
-                self.sdf[i, j] = np.sqrt((i - self.a//2)**2 + (j - self.b//2)**2) - r
+        # Randomise centre location for location invariance
+        centre = np.random.multivariate_normal(mean=np.zeros(2), cov=np.eye(2) * centre_var) * V.shape // 2 + np.array(V.shape) // 2
+        vec = np.stack(np.indices(V.shape), axis = -1)
+        self.sdf = np.linalg.norm(vec - centre, axis=-1) - r  # Ensure SDF is non-negative outside the circle
 
     def get_derivatives(self) -> tuple[np.ndarray[float], np.ndarray[float], np.ndarray[float], np.ndarray[float]]:
         '''
@@ -92,6 +92,9 @@ class SDF_MRI():
         Apply activation function to the array, to acquire magnitude scan-like behaviour
         '''
         return 0.5 * (1 - np.tanh(3 * array / epsilon))
+    
+    def add_smoothing(self, sigma: float) -> np.ndarray[float]: # Incomplete
+        return
 
     def add_noise(self, noise_level: float) -> np.ndarray[float]: # Incomplete
         '''
@@ -116,7 +119,6 @@ class Speed_Field():
         Args:
             shape: The shape of the speed field (height, width).
         '''
-        self.a, self.b = shape
         self.V = np.zeros(shape)
 
     def sinusoidal(self, freq_range: tuple[float], amp_range: tuple[float], num_modes: int = 2):
@@ -142,10 +144,12 @@ class Speed_Field():
 
     def affine(self, grad_range: tuple[float], bias_range: tuple[float]):
         '''
-        Apply a random affine transformation to the speed field.
+        Apply a random affine modulation to the speed field.
         Args:
             grad_range: The gradient range (min, max) for the affine transformation.
             bias_range: The bias range (min, max) for the affine transformation.
+
+        N.B. Adding several affine transformations yields a net affine transformation, so is useless.
         '''
         y, x = np.indices(self.V.shape)
         vec = np.array([x, y])

@@ -7,6 +7,8 @@ from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
 from utils.fcn_resnet101_util import clip_and_scale, get_model_instance_segmentation, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
 
+'''Need to review using regularisation in loss instead of patience-based early stopping.'''
+
 def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs, patience=15):
     """
     Trains the model and returns the best model based on validation IoU.

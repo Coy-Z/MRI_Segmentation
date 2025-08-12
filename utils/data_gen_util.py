@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 
 class SDF_MRI():
     '''
@@ -16,10 +17,11 @@ class SDF_MRI():
         self.V = V
         self.a, self.b = V.shape
         self.r = r
+        self.dt = min(0.05 / self.V.max(), 0.02) # Time step size based on max speed -> enforces CFL conditions
 
         # Set up seed SDF
         # \rho - R for analytical SDF of a circle
-        for i in range(self.a):
+        for i in range(self.a): # Vectorise this
             for j in range(self.b):
                 self.sdf[i, j] = np.sqrt((i - self.a//2)**2 + (j - self.b//2)**2) - r
 
@@ -59,20 +61,23 @@ class SDF_MRI():
         nabla_neg = np.zeros_like(self.sdf)
 
         nabla_pos = np.sqrt(np.minimum(Dn, 0)**2 + np.maximum(Ds, 0)**2 + np.minimum(De, 0)**2 + np.maximum(Dw, 0)**2)
-        nabla_neg = np.sqrt(np.maximum(Dn, 0)**2 + np.minimum(Ds, 0)**2 + np.maximum(De, 0)**2 + np.minimum(Dw, 0)**2)
+        nabla_neg = np.sqrt(np.maximum(Dn, 0)**2 + np.minimum(Ds, 0)**2 + np.maximum(De, 0)**2 + np.minimum(Dw, 0)**2) # double check
 
         return nabla_pos, nabla_neg # Order: positive, negative
 
-    def step_sdf(self, iterations: int = 20, dt: float = 1e-2):
+    def step_sdf(self, iterations: int = 20, dt: float = None):
         '''
         Perform a time step of the SDF update.
         Args:
             iterations: The number of update iterations.
             dt: The time step size.
         '''
+        if dt is None:
+            dt = self.dt
+
         for _ in range(iterations):
             nablas_pos, nabla_neg = self.get_nablas()
-            grad = np.maximum(self.V, 0) * nablas_pos + np.minimum(self.V, 0) * nabla_neg
+            grad = np.maximum(self.V, 0) * nablas_pos - np.minimum(self.V, 0) * nabla_neg # double check
             self.sdf -= self.V * grad * dt
         return
 
@@ -80,7 +85,7 @@ class SDF_MRI():
         '''
         Get the current SDF (testing function).
         '''
-        return self.sdf
+        return self.sdf.copy()
 
     def activation(self, array: np.ndarray[float], epsilon: float) -> np.ndarray[float]:
         '''
@@ -103,18 +108,72 @@ class SDF_MRI():
         mask = np.where(self.sdf < 0, 1, 0)
         magn = self.activation(self.sdf, epsilon = 2/self.a)
         return mask, magn
+    
+class Speed_Field():
+    def __init__(self, shape: tuple[int, int]):
+        '''
+        Initialize the speed field.
+        Args:
+            shape: The shape of the speed field (height, width).
+        '''
+        self.a, self.b = shape
+        self.V = np.zeros(shape)
 
-# Testing
-V = np.ones((100, 100)) * 5
-sdf_mri = SDF_MRI(V, r = 20)
-#initial_sdf = sdf_mri.get_sdf().copy()
+    def sinusoidal(self, freq_range: tuple[float], amp_range: tuple[float], num_modes: int = 2):
+        '''
+        Apply a random sinusoidal modulation to the speed field.
+        Args:
+            freq_range: The frequency range (min, max) for the sinusoidal modulation.
+            amp_range: The amplitude range (min, max) for the sinusoidal modulation.
+            num_modes: The number of sinusoidal modes to apply.
+        '''
+        y, x = np.indices(self.V.shape)
+        # Center the origin
+        y -= self.V.shape[0] // 2
+        x -= self.V.shape[1] // 2
+        vec = np.stack((x, y), axis=-1)
+        for _ in range(num_modes):
+            frequency = np.random.uniform(*freq_range)
+            amplitude = np.random.uniform(*amp_range)
+            phase = np.random.uniform(0, 2 * np.pi)
+            angle = np.random.uniform(0, 2 * np.pi)
+            self.V += amplitude * np.sin(2 * np.pi * frequency * (vec @ np.array([np.cos(angle), np.sin(angle)]) + phase))
+        return
+
+    def affine(self, grad_range: tuple[float], bias_range: tuple[float]):
+        '''
+        Apply a random affine transformation to the speed field.
+        Args:
+            grad_range: The gradient range (min, max) for the affine transformation.
+            bias_range: The bias range (min, max) for the affine transformation.
+        '''
+        y, x = np.indices(self.V.shape)
+        vec = np.array([x, y])
+        gradient = np.random.uniform(*grad_range, 2)
+        bias = np.random.uniform(*bias_range)
+        self.V += (vec.T @ gradient).T + bias
+        return
+
+    def get_speed_field(self) -> np.ndarray[float]:
+        '''
+        Get the current speed field.
+        '''
+        return self.V.copy()
+
+# ----- Testing -----
+
+V = Speed_Field(shape=(100, 120))
+V.sinusoidal(freq_range=(0.001, 0.05), amp_range=(0.5, 1.5), num_modes=2)
+V.affine(grad_range=(-0.05, 0.05), bias_range=(-1, 1))
+sdf_mri = SDF_MRI(V.get_speed_field(), r = 22)
+#initial_sdf = sdf_mri.get_sdf()
 initial_sdf = np.where(sdf_mri.get_sdf() < 0, 1, 0)
-sdf_mri.step_sdf(iterations=100, dt=0.01)
+sdf_mri.step_sdf(iterations=100)
 #final_sdf = sdf_mri.get_sdf()
 final_sdf = np.where(sdf_mri.get_sdf() < 0, 1, 0)
 
 # Plot Results
-fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+fig, ax = plt.subplots(1, 3, figsize=(12, 4))
 pcm = []
 pcm.append(ax[0].pcolormesh(initial_sdf, cmap='viridis'))
 ax[0].set_title('Initial SDF')
@@ -122,8 +181,12 @@ ax[0].axis('off')
 pcm.append(ax[1].pcolormesh(final_sdf, cmap='viridis'))
 ax[1].set_title('Final SDF')
 ax[1].axis('off')
+pcm.append(ax[2].pcolormesh(V.get_speed_field(), cmap='viridis'))
+ax[2].set_title('Speed Field')
+ax[2].axis('off')
 fig.colorbar(pcm[0], ax = ax[0], shrink = 0.6)
 fig.colorbar(pcm[1], ax = ax[1], shrink = 0.6)
+fig.colorbar(pcm[2], ax = ax[2], shrink = 0.6)
 
 plt.tight_layout()
 plt.show()

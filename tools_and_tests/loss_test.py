@@ -1,8 +1,8 @@
 # Checking the loss function behaves as expected on the most basic example.
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import torch
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.fcn_resnet101_util import sum_IoU, Combined_Loss
 
 device = "cuda" if torch.cuda.is_available() else "cpu"

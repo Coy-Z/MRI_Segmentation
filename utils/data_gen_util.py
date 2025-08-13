@@ -1,8 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.linalg import cholesky, solve_triangular
 from scipy.spatial.distance import cdist
-import time
 
 class Random_Speed_Field():
     def __init__(self, shape: tuple[int, int]):
@@ -158,10 +155,36 @@ class SDF_MRI(Level_Set_SDF):
             epsilon: A value to determine the boundary layer thickness.
         '''
         return 0.5 * (1 - np.tanh(3 * array / epsilon))
-    
+
+    def cholesky_rbf_1d(self, x, length_scale, variance):
+        '''
+        Calculate the Cholesky decomposition of the 1D Radial Basis Function (RBF) kernel.
+        Args:
+            x: The input array.
+            length_scale: The length scale of the RBF.
+            variance: The variance of the RBF.
+        Returns:
+            The Cholesky decomposition of the 1D RBF kernel.
+        '''
+        # Compute euclidian distances in this direction
+        dx2 = (x[:, None] - x[None, :])**2
+        # Compute the kernel in this dimension
+        K1d = variance * np.exp(-0.5 * dx2 / length_scale**2)
+        # Add small jitter to the diagonal to make sure K is SPD to numerical precision
+        K1d += np.eye(K1d.shape[0])*1e-8*variance
+        # Cholesky decomposition
+        try:
+            L1d = np.linalg.cholesky(K1d)
+        except np.linalg.LinAlgError:
+            # If Cholesky fails, add more jitter
+            K1d += np.eye(K1d.shape[0])*1e-5*variance
+            L1d = np.linalg.cholesky(K1d)
+        return L1d
+
     def gaussian_process(self, grid_shape: tuple[int, int] = None, length_scale: float = 1., variance: float = 1.):
         '''
-        Sample random smooth functions from an untrained Gaussian Process.
+        Sample random smooth functions from an untrained Gaussian Process. We exploit the separable nature
+        of the RBF kernel on a structured grid, i.e. K = Kronecker(K_x, K_y), hence only requiring compute in 1D.
         Args:
             grid_shape: The shape of the grid to sample on (height, width). If None, uses self.V.shape
             length_scale: The length scale of the Gaussian Process (larger -> smoother).
@@ -173,43 +196,23 @@ class SDF_MRI(Level_Set_SDF):
             grid_shape = self.V.shape
 
         # Create coordinate grid
-        h, w = grid_shape
-        y_coords = np.linspace(0, 1, h)[:, None]
-        x_coords = np.linspace(0, 1, w)[None, :]
+        ny, nx = grid_shape
+        y = np.linspace(0, 1, ny)
+        x = np.linspace(0, 1, nx)
 
-        # Stack coordinates
-        coords = np.stack([
-            np.repeat(x_coords, h, axis=0).flatten(),
-            np.repeat(y_coords, w, axis=1).flatten()
-        ], axis=1)
-        n_points = coords.shape[0]
-
-        # Compute pairwise distances
-        distances = cdist(coords, coords, metric='euclidean')
-
-        # RBF kernel: K(x, x') = variance * exp{-0.5 * ||x - x'||^2 / length_scale^2}
-        K = variance * np.exp(-0.5 * distances**2 / length_scale**2)
-
-        # Add small jitter for numerical stability
-        K[np.diag_indices_from(K)] += 1e-6
-
-        # Cholesky decomposition for efficient sampling
-        try:
-            L = np.linalg.cholesky(K)
-        except np.linalg.LinAlgError:
-            # If Cholesky fails, add more jitter
-            K[np.diag_indices_from(K)] += 1e-3
-            L = np.linalg.cholesky(K)
+        Ly = self.cholesky_rbf_1d(y, length_scale=length_scale, variance=variance)
+        Lx = self.cholesky_rbf_1d(x, length_scale=length_scale, variance=variance)
 
         # Sample from standard normal and transform
-        z = np.random.normal(0, 1, n_points)
-        samples = L @ z
-
-        return samples.reshape(grid_shape)
+        # Generate a random latent vector
+        rand_gen = np.random.default_rng()
+        z = rand_gen.standard_normal((nx, ny))
+        samples = Lx @ z @ Ly.T
+        return samples
     
     def gaussian_process_sparse(self, grid_shape: tuple[int, int] = None, length_scale: float = 1., variance: float = 1., n_inducing: int = 100):
         '''
-        Fast sparse GP sampling using inducing points for large grids.
+        Fast sparse GP sampling using inducing points for large grids. Does not exploit separability.
         Args:
             grid_shape: The shape of the grid to sample on (height, width). If None, uses self.V.shape
             length_scale: The length scale of the Gaussian Process (larger -> smoother).
@@ -266,10 +269,8 @@ class SDF_MRI(Level_Set_SDF):
             noise_level: The level of noise to add (order-of-magnitude).
         '''
         white_noise = np.random.normal(0, noise_level/5, arr.shape)
-        if arr.shape[0] * arr.shape[1] > 1600:
-            smooth_noise = self.gaussian_process_sparse(grid_shape = arr.shape, length_scale = self.N / 1000, variance = noise_level)
-        else:
-            smooth_noise = self.gaussian_process(grid_shape = arr.shape, length_scale = self.N / 1000, variance = noise_level)
+        # Generate smooth noise using Gaussian Process
+        smooth_noise = self.gaussian_process(grid_shape = arr.shape, length_scale = self.N / 1000, variance = noise_level)
         arr += white_noise + smooth_noise
         return
 
@@ -280,7 +281,7 @@ class SDF_MRI(Level_Set_SDF):
             A tuple containing the mask and magnitude arrays.
         '''
         mask = np.where(self.sdf.copy() < 0, 1, 0)
-        magn = self.activation(self.sdf.copy(), epsilon = 15) * 10 # Magnitude ~ 10
+        magn = self.activation(self.sdf.copy(), epsilon = 15) * 15 # Magnitude ~ 15
         self.add_noise(magn, noise_level = 1)  # Add noise to the magnitude ~ 1
         return mask, magn
 
@@ -346,48 +347,3 @@ class SDF_MRI_Tube(SDF_MRI):
         vec = np.stack(np.indices(V.shape), axis=-1)
         # Compute the signed distance function
         self.sdf = np.abs(np.dot(vec - point, n)) - r  # SDF is the distance to the tube
-
-# ----- Testing -----
-
-since = time.time()
-V = Random_Speed_Field(shape=(100, 100))
-V.sinusoidal(freq_range=(0.001, 0.05), amp_range=(0, 1), num_modes=2)
-V.affine(grad_range=(-0.05, 0.05), bias_range=(-1, 2))
-sdf_mri_circ = SDF_MRI_Circle(V.get_speed_field(), r = 22)
-sdf_mri_tube = SDF_MRI_Tube(V.get_speed_field(), r=10.)
-
-#smooth_noise = sdf_mri_circ.gaussian_process(grid_shape=(100, 100), length_scale=0.1, variance=10.)
-#initial_sdf = sdf_mri_circ.get_sdf()
-#initial_sdf = np.where(sdf_mri_circ.get_sdf() < 0, 1, 0)
-
-sdf_mri_circ.step_sdf(iterations=100)
-sdf_mri_tube.step_sdf(iterations=100)
-maskc, magnc = sdf_mri_circ.return_mask_magn_pair()
-maskt, magnt = sdf_mri_tube.return_mask_magn_pair()
-
-#final_sdf = sdf_mri_circ.get_sdf()
-
-print("Time taken:", time.time() - since)
-
-# Plot Results
-fig, ax = plt.subplots(2, 2, figsize=(8, 6))
-pcm = []
-pcm.append(ax[0, 0].pcolormesh(maskc, cmap='viridis'))
-ax[0, 0].set_title('Mask')
-ax[0, 0].axis('off')
-pcm.append(ax[0, 1].pcolormesh(magnc, cmap='viridis'))
-ax[0, 1].set_title('Magnitude')
-ax[0, 1].axis('off')
-pcm.append(ax[1, 0].pcolormesh(maskt, cmap='viridis'))
-ax[1, 0].set_title('Mask')
-ax[1, 0].axis('off')
-pcm.append(ax[1, 1].pcolormesh(magnt, cmap='viridis'))
-ax[1, 1].set_title('Magnitude')
-ax[1, 1].axis('off')
-fig.colorbar(pcm[0], ax = ax[0, 0], shrink = 0.6)
-fig.colorbar(pcm[1], ax = ax[0, 1], shrink = 0.6)
-fig.colorbar(pcm[2], ax = ax[1, 0], shrink = 0.6)
-fig.colorbar(pcm[3], ax = ax[1, 1], shrink = 0.6)
-
-plt.tight_layout()
-plt.show()

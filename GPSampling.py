@@ -1,3 +1,5 @@
+# Code written by Matthew Yoko to demonstrate untrained Gaussian Process sampling.
+
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -52,7 +54,3 @@ print(f"Elapsed time: {t1 - t0}... I'm fast as fuck boi")
 im = plt.imshow(sample, vmin=0, vmax=1, extent=(0,1,0,1))
 plt.colorbar(im)
 plt.show()
-
-
-
-

@@ -24,5 +24,8 @@ data/
 # Ignore .gif files which were used for displaying results
 #*.gif
 
-#Ignore docker architecture, since FEniCS is not being used anymore.
+# Ignore docker architecture, since FEniCS is not being used anymore.
 docker/
+
+# Ignore notes
+notes/

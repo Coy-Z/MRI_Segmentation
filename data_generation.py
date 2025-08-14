@@ -49,8 +49,8 @@ def data_generator(num: int = 10, depth: int = 10):
 def data_saver(masks, magnitudes, dir):
     assert len(masks) == len(magnitudes), "Masks and magnitudes must have the same length."
     for i in range(len(masks)):
-        mask_path = f"{dir}/mask/artificial_mask_{i}.npy"
-        magn_path = f"{dir}/magn/artificial_magn_{i}.npy"
+        mask_path = f"{dir}/mask/artificial_{i}.npy"
+        magn_path = f"{dir}/magn/artificial_{i}.npy"
         np.save(mask_path, masks[i])
         np.save(magn_path, magnitudes[i])
 

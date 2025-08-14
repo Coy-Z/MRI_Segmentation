@@ -27,14 +27,20 @@ def data_generator(num: int = 10, depth: int = 10):
     magnitudes = []
     for _ in range(num):
         V = dg.Random_Speed_Field((100, 100))
-        V.sinusoidal(freq_range=(0.01, 0.05), amp_range=(0, 2), num_modes=4) # High frequency, low amplitude
-        V.sinusoidal(freq_range=(0.001, 0.01), amp_range=(2, 5), num_modes=2) # Low frequency, high amplitude
+        V.sinusoidal(freq_range=(0.01, 0.05), amp_range=(0, 2), num_modes=4)
+        V.sinusoidal(freq_range=(0.001, 0.01), amp_range=(2, 5), num_modes=2) 
         V.affine(grad_range=(-0.1, 0.1), bias_range=(-1, 2))
         type_rand = np.random.randint(0, 2)
         if type_rand:
+            V.sinusoidal(freq_range=(0.01, 0.03), amp_range=(15, 30), num_modes=2)
+            V.random_coherent(log_length_scale_mean=-2.3, log_length_scale_variance=0.5, variance=40) # Low frequency, high amplitude
+            V.random_coherent(log_length_scale_mean=0, log_length_scale_variance=1, variance=30)  # High frequency, low amplitude
             sdf = dg.SDF_MRI_Tube(V)
         else:
             sdf = dg.SDF_MRI_Circle(V)
+            V.random_coherent(log_length_scale_mean=-2, log_length_scale_variance=0.5, variance=10) # Low frequency, high amplitude
+            V.random_coherent(log_length_scale_mean=0, log_length_scale_variance=1, variance=40)  # High frequency, low amplitude
+            sdf = dg.SDF_MRI_Tube(V)
         mask, magn = data_gen(V, sdf, depth)
         masks.append(mask)
         magnitudes.append(magn)

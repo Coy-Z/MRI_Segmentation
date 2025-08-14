@@ -1,6 +1,13 @@
 import numpy as np
 
 class Random_Speed_Field():
+    '''
+    Class for initializing a speed field and applying random perturbations.
+    
+    Improvements to be made:
+        - Add warping
+        - Add dunder method implementation
+    '''
     def __init__(self, shape: tuple[int, int]):
         '''
         Initialize the speed field.
@@ -14,8 +21,8 @@ class Random_Speed_Field():
         '''
         Apply a random sinusoidal modulation to the speed field.
         Args:
-            freq_range: The frequency range (min, max) for the sinusoidal modulation.
-            amp_range: The amplitude range (min, max) for the sinusoidal modulation.
+            freq_range: The frequency range (min, max) for the sinusoidal modulation. A log-uniform distribution is then applied.
+            amp_range: The amplitude range (min, max) for the sinusoidal modulation. A uniform distribution is then applied.
             num_modes: The number of sinusoidal modes to apply.
         '''
         y, x = np.indices(self.field.shape)
@@ -36,8 +43,8 @@ class Random_Speed_Field():
         '''
         Apply a random affine modulation to the speed field.
         Args:
-            grad_range: The gradient range (min, max) for the affine transformation.
-            bias_range: The bias range (min, max) for the affine transformation.
+            grad_range: The gradient range (min, max) for the affine transformation. A uniform distribution is then applied.
+            bias_range: The bias range (min, max) for the affine transformation. A uniform distribution is then applied.
 
         N.B. Adding several affine transformations yields a net affine transformation, so is useless.
         '''
@@ -46,6 +53,74 @@ class Random_Speed_Field():
         gradient = np.random.uniform(*grad_range, 2)
         bias = np.random.uniform(*bias_range)
         self.field += (vec.T @ gradient).T + bias
+        return
+    
+    def cholesky_rbf_1d(self, x, length_scale, variance):
+        '''
+        Calculate the Cholesky decomposition of the 1D Radial Basis Function (RBF) kernel.
+        Args:
+            x: The input array.
+            length_scale: The length scale of the RBF.
+            variance: The variance of the RBF.
+        Returns:
+            The Cholesky decomposition of the 1D RBF kernel.
+        '''
+        # Compute euclidian distances in this direction
+        # Note: x[:, None] turns x into a column vector, and x[None, :] turns x into a row vector.
+        #       Subtracting one from the other gives the pairwise differences (via broadcasting).
+        distances2 = (x[:, None] - x[None, :])**2
+        # Compute the kernel in this dimension
+        K = variance * np.exp(-0.5 * distances2 / length_scale**2)
+        # Add small jitter to the diagonal to make sure K is SPD to numerical precision
+        K += np.eye(K.shape[0])*1e-8*variance
+        # Cholesky decomposition
+        try:
+            L = np.linalg.cholesky(K)
+        except np.linalg.LinAlgError:
+            # If Cholesky fails, add more jitter
+            K += np.eye(K.shape[0])*1e-5*variance
+            L = np.linalg.cholesky(K)
+        return L
+
+    def gaussian_process(self, grid_shape: tuple[int, int] = None, length_scale: float = 1., variance: float = 1.):
+        '''
+        Sample random smooth functions from an untrained Gaussian Process. We exploit the separable nature
+        of the RBF kernel on a structured grid, i.e. K = Kronecker(K_x, K_y), hence only requiring compute in 1D.
+        Args:
+            grid_shape: The shape of the grid to sample on (height, width). If None, uses self.V.shape
+            length_scale: The length scale of the Gaussian Process (larger -> smoother).
+            variance: The variance of the Gaussian Process (controls amplitude of function).
+        Returns:
+            The sampled function.
+        '''
+        if grid_shape is None:
+            grid_shape = self.shape
+
+        # Create coordinate grid
+        ny, nx = grid_shape
+        y = np.linspace(0, 1, ny)
+        x = np.linspace(0, 1, nx)
+
+        Ly = self.cholesky_rbf_1d(y, length_scale=length_scale, variance=variance)
+        Lx = self.cholesky_rbf_1d(x, length_scale=length_scale, variance=variance)
+
+        # Sample from standard normal and transform
+        # Generate a random latent vector
+        rand_gen = np.random.default_rng()
+        z = rand_gen.standard_normal((nx, ny))
+        samples = Lx @ z @ Ly.T
+        return samples
+    
+    def random_coherent(self, log_length_scale_mean: float = 1., log_length_scale_variance: float = 1., variance: float = 1.):
+        '''
+        Add a random coherent photo (sampled from an untrained Gaussian Process).
+        Args:
+            length_scale_mean: The mean length scale for the Gaussian Process (larger -> smoother).
+            length_scale_variance: The variance of the length scale for the Gaussian Process.
+            variance: The variance for the Gaussian Process (controls amplitude of function).
+        '''
+        length_scale = np.exp(np.random.normal(log_length_scale_mean, log_length_scale_variance))
+        self.field += self.gaussian_process(grid_shape=self.shape, length_scale=length_scale, variance=variance)
         return
     
     def reset(self):
@@ -57,6 +132,7 @@ class Random_Speed_Field():
 class Level_Set_SDF():
     '''
     Class to use Level Set Iterative Methods to warp SDFs.
+
     '''
     def __init__(self, V: Random_Speed_Field, SDF: np.ndarray[float] = None):
         '''
@@ -142,7 +218,7 @@ class Level_Set_SDF():
     def step_sdf_analytical_grad(self, iterations: int = 20, dt: float = None):
         '''
         Perform a time step of the SDF update, using the Eikonal assumption : grad = 1.
-        If large timesteps, use Level_Set_SDF.step_sdf_numerical_grad to avoid blow up.
+        If iterations is large, use Level_Set_SDF.step_sdf_numerical_grad to avoid blow up.
         Args:
             iterations: The number of update iterations.
             dt: The time step size.
@@ -173,13 +249,14 @@ class SDF_MRI(Level_Set_SDF):
         super().__init__(V, SDF)
         self.N = V.field.shape[0] # We will assume we are always generating square data.
 
-    def activation(self, array: np.ndarray[float], epsilon: float) -> np.ndarray[float]:
+    def activation(self, array: np.ndarray[float], mean_epsilon: float) -> np.ndarray[float]:
         '''
         Apply an activation function to the array to acquire MRI magnitude scan-like behaviour.
         Args:
             array: The input array to apply the activation function to.
-            epsilon: A value to determine the boundary layer thickness.
+            mean_epsilon: A value to determine the boundary layer thickness.
         '''
+        epsilon = np.random.normal(mean_epsilon, 0.1)
         return 0.5 * (1 - np.tanh(3 * array / epsilon))
 
     def cholesky_rbf_1d(self, x, length_scale, variance):
@@ -237,7 +314,7 @@ class SDF_MRI(Level_Set_SDF):
         z = rand_gen.standard_normal((nx, ny))
         samples = Lx @ z @ Ly.T
         return samples
-
+    
     def add_noise(self, arr: np.ndarray[float], noise_level: float = 1.) -> np.ndarray[float]: # Incomplete
         '''
         Add fine Gaussian noise and smooth noise (sampled Gaussian Process) to the SDF.
@@ -258,7 +335,7 @@ class SDF_MRI(Level_Set_SDF):
             A tuple containing the mask and magnitude arrays.
         '''
         mask = np.where(self.sdf.copy() < 0, 1, 0)
-        magn = self.activation(self.sdf.copy(), epsilon = 15) * 15 # Magnitude ~ 15
+        magn = self.activation(self.sdf.copy(), mean_epsilon = 0.15 * self.N) * 15 # Magnitude ~ 15
         self.add_noise(magn, noise_level = 1)  # Add noise to the magnitude ~ 1
         return mask, magn
 

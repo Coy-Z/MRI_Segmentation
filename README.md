@@ -7,15 +7,23 @@ an iterative solver. The refined boundaries will then be used as a prior for the
 Navier-Stokes Problem. See https://mpj1001.user.srcf.net/MJ_Flow_MRI.html for more details
 on the full project.
 
-To dive deeper into this sub-project, we use a combined Weighted Cross-Entropy and Focal-Tversky Loss
-to train the FCN. These choices of loss functions allow us to preferentially target accurate
+To dive deeper into this sub-project, we use a combined Weighted Cross-Entropy and Focal-Tversky
+Loss to train the FCN. These choices of loss functions allow us to preferentially target accurate
 positive (foreground) prediction, since the training data tends to sparse (majority background).
 
 One of the largest difficulties of this project is the lack of quality pre-segmented data.
-To overcome this, we use two base scans (pre-segmented using traditional techniques).
-One of the Carotid, and one of the Aorta. These are then warped using varying sine fields,
-producing high-quality artificial data to train the model on. Some demonstrative slices are
-shown below.
+To overcome this, we use a level set method to generate artificial data. The process is described
+below:
+
+1. Use analytical methods or pre-written packages to generate a seed SDF. In this repo, I have
+written classes for tubes and circles. New seed geometries can be used by parsing the
+new SDF into the utils.data_gen_utils.SDF_MRI base class initialization.
+2. Generate a speed field and modulate it with random functions.
+3. Apply the speed field to the seed SDFs to perturb the geometry, forming a new SDF.
+4. Apply an activation to the SDF with noise for the magnitude replica.
+5. Apply a np.where() method for the binary mask.
+
+We reserve real segmented MRI data for the validation set.
 
 ![Aorta](images/aorta.png)
 *Figure 1: This is a slice of the Aorta density scan.*
@@ -23,12 +31,7 @@ shown below.
 ![Carotid](images/carotid.png)
 *Figure 2: This is a slice of the Carotid density scan.*
 
-Note the data is not yet publicly available.
+![Artificial](images/artificial_data.png)
+*Figure 3: This is a slice of the artificially generated density scan. The white lines overlayed on the magnitude scan are Signed Distance Field contours.*
 
-To run this repository, you will need FEniCS support. The easiest (and recommended) way is to use Docker.
-Register for a Docker account and install Docker Desktop for whichever system you work on.
-Once set up, clone the repository to your local computer, and navigate to the project workspace, before running the following lines.
-```bash
->> docker build -t fcn_resnet_MRI_seg .
->> docker run --gpus all -it --rm fcn_resnet_MRI_seg
-```
+Note: The real MRI data is not yet publicly available.

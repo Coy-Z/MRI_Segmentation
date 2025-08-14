@@ -35,3 +35,34 @@ We reserve real segmented MRI data for the validation set.
 *Figure 3: This is a slice of the artificially generated density scan. The white lines overlayed on the magnitude scan are Signed Distance Field contours.*
 
 Note: The real MRI data is not yet publicly available.
+
+## Running the repo
+
+Clone the repo, then run
+```python
+pip install requirements.txt
+```
+and the install torch from the website https://pytorch.org/get-started/locally/.
+
+The data folder should be formatted as:
+```pgsql
+data/
+├── train/
+|   ├── magn/
+|   |   ├──train_file_name_1
+|   |   ├──train_file_name_2
+|   |   :
+|   └── mask/
+|       ├──train_file_name_1
+|       ├──train_file_name_2
+|       :
+└── val/
+    ├── magn/
+    |   ├──val_file_name_1
+    |   ├──val_file_name_2
+    |   :
+    └── mask/
+        ├──val_file_name_1
+        ├──val_file_name_2
+        :
+```

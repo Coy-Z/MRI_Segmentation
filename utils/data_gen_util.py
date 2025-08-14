@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.spatial.distance import cdist
 
 class Random_Speed_Field():
     def __init__(self, shape: tuple[int, int]):
@@ -8,7 +7,8 @@ class Random_Speed_Field():
         Args:
             shape: The shape of the speed field (height, width).
         '''
-        self.V = np.zeros(shape)
+        self.field = np.zeros(shape)
+        self.shape = shape
 
     def sinusoidal(self, freq_range: tuple[float], amp_range: tuple[float], num_modes: int = 2):
         '''
@@ -18,17 +18,18 @@ class Random_Speed_Field():
             amp_range: The amplitude range (min, max) for the sinusoidal modulation.
             num_modes: The number of sinusoidal modes to apply.
         '''
-        y, x = np.indices(self.V.shape)
+        y, x = np.indices(self.field.shape)
         # Center the origin
-        y -= self.V.shape[0] // 2
-        x -= self.V.shape[1] // 2
+        y -= self.field.shape[0] // 2
+        x -= self.field.shape[1] // 2
         vec = np.stack((x, y), axis=-1)
         for _ in range(num_modes):
-            frequency = np.random.uniform(*freq_range)
+            logfrequency = np.random.uniform(*np.log(np.array(freq_range)))
+            frequency = np.exp(logfrequency)
             amplitude = np.random.uniform(*amp_range)
             phase = np.random.uniform(0, 2 * np.pi)
             angle = np.random.uniform(0, 2 * np.pi)
-            self.V += amplitude * np.sin(2 * np.pi * frequency * (vec @ np.array([np.cos(angle), np.sin(angle)]) + phase))
+            self.field += amplitude * np.sin(2 * np.pi * frequency * (vec @ np.array([np.cos(angle), np.sin(angle)]) + phase))
         return
 
     def affine(self, grad_range: tuple[float], bias_range: tuple[float]):
@@ -40,24 +41,24 @@ class Random_Speed_Field():
 
         N.B. Adding several affine transformations yields a net affine transformation, so is useless.
         '''
-        y, x = np.indices(self.V.shape)
+        y, x = np.indices(self.field.shape)
         vec = np.array([x, y])
         gradient = np.random.uniform(*grad_range, 2)
         bias = np.random.uniform(*bias_range)
-        self.V += (vec.T @ gradient).T + bias
+        self.field += (vec.T @ gradient).T + bias
         return
-
-    def get_speed_field(self) -> np.ndarray[float]:
+    
+    def reset(self):
         '''
-        Get the current speed field.
+        Reset the speed field to zero.
         '''
-        return self.V.copy()
+        self.field = np.zeros_like(self.field)
 
 class Level_Set_SDF():
     '''
     Class to use Level Set Iterative Methods to warp SDFs.
     '''
-    def __init__(self, V: np.ndarray[float], SDF: np.ndarray[float] = None):
+    def __init__(self, V: Random_Speed_Field, SDF: np.ndarray[float] = None):
         '''
         Initialize the Level_Set_SDF class with a seed SDF and speed field.
         Args:
@@ -65,12 +66,17 @@ class Level_Set_SDF():
             SDF: Initial signed distance field (must be the same size as V)
         '''
         self.V = V
-        self.dt = min(0.05 / self.V.max(), 0.02) # Time step size based on max speed -> enforces CFL conditions
+        self.dt = min(0.05 / self.V.field.max(), 0.02) # Time step size based on max speed -> enforces CFL conditions. Courant Number <= 0.05
         # Set up seed SDF
         if SDF is not None:
             self.sdf = SDF
         else:
             self.sdf = np.zeros_like(V)
+
+    def update_speed_field(self, V: Random_Speed_Field):
+        assert V.field.shape == self.V.field.shape, "New speed field must be the same shape as current speed field."
+        self.V = V
+        self.dt = min(0.05 / self.V.field.max(), 0.02) # Update time step size
 
     def get_derivatives(self) -> tuple[np.ndarray[float], np.ndarray[float], np.ndarray[float], np.ndarray[float]]:
         '''
@@ -84,15 +90,19 @@ class Level_Set_SDF():
         # Calculate Cardinal Derivatives
         Dn = np.zeros_like(self.sdf)
         Dn = (padded_sdf[2:, 1:-1] - padded_sdf[1:-1, 1:-1])
+        Dn[-1] = Dn[-2]
 
         Ds = np.zeros_like(self.sdf)
         Ds = (padded_sdf[1:-1, 1:-1] - padded_sdf[:-2, 1:-1])
+        Ds[0] = Ds[1]
 
         De = np.zeros_like(self.sdf)
         De = (padded_sdf[1:-1, 2:] - padded_sdf[1:-1, 1:-1])
+        De[:, -1] = De[:, -2]
 
         Dw = np.zeros_like(self.sdf)
         Dw = (padded_sdf[1:-1, 1:-1] - padded_sdf[1:-1, :-2])
+        Dw[:, 0] = Dw[:, 1]
 
         return Dn, Ds, De, Dw # Order: North South East West
 
@@ -109,11 +119,11 @@ class Level_Set_SDF():
         nabla_neg = np.zeros_like(self.sdf)
 
         nabla_pos = np.sqrt(np.minimum(Dn, 0)**2 + np.maximum(Ds, 0)**2 + np.minimum(De, 0)**2 + np.maximum(Dw, 0)**2)
-        nabla_neg = np.sqrt(np.maximum(Dn, 0)**2 + np.minimum(Ds, 0)**2 + np.maximum(De, 0)**2 + np.minimum(Dw, 0)**2) # double check
+        nabla_neg = np.sqrt(np.maximum(Dn, 0)**2 + np.minimum(Ds, 0)**2 + np.maximum(De, 0)**2 + np.minimum(Dw, 0)**2)
 
         return nabla_pos, nabla_neg # Order: positive, negative
 
-    def step_sdf(self, iterations: int = 20, dt: float = None):
+    def step_sdf_numerical_grad(self, iterations: int = 20, dt: float = None):
         '''
         Perform a time step of the SDF update.
         Args:
@@ -124,10 +134,26 @@ class Level_Set_SDF():
             dt = self.dt
 
         for _ in range(iterations):
-            nablas_pos, nabla_neg = self.get_nablas()
-            grad = np.maximum(self.V, 0) * nablas_pos - np.minimum(self.V, 0) * nabla_neg # double check
-            self.sdf -= self.V * grad * dt
+            nabla_pos, nabla_neg = self.get_nablas()
+            grad = np.maximum(self.V.field, 0) * nabla_pos + np.minimum(self.V.field, 0) * nabla_neg # double check
+            self.sdf -= grad * dt
         return
+
+    def step_sdf_analytical_grad(self, iterations: int = 20, dt: float = None):
+        '''
+        Perform a time step of the SDF update, using the Eikonal assumption : grad = 1.
+        If large timesteps, use Level_Set_SDF.step_sdf_numerical_grad to avoid blow up.
+        Args:
+            iterations: The number of update iterations.
+            dt: The time step size.
+        '''
+        if dt is None:
+            dt = self.dt
+
+        for _ in range(iterations):
+            self.sdf -= self.V.field * dt
+        return
+    
 
     def get_sdf(self) -> np.ndarray[float]:
         '''
@@ -143,9 +169,9 @@ class SDF_MRI(Level_Set_SDF):
     Daughter class of the Level_Set_SDF class.
     This allows us to turn SDFs into MRI-like data and corresponding segmentation masks.
     '''
-    def __init__(self, V: np.ndarray[float], SDF: np.ndarray[float] = None):
+    def __init__(self, V: Random_Speed_Field, SDF: np.ndarray[float] = None):
         super().__init__(V, SDF)
-        self.N = V.shape[0] # We will assume we are always generating square data.
+        self.N = V.field.shape[0] # We will assume we are always generating square data.
 
     def activation(self, array: np.ndarray[float], epsilon: float) -> np.ndarray[float]:
         '''
@@ -167,19 +193,21 @@ class SDF_MRI(Level_Set_SDF):
             The Cholesky decomposition of the 1D RBF kernel.
         '''
         # Compute euclidian distances in this direction
-        dx2 = (x[:, None] - x[None, :])**2
+        # Note: x[:, None] turns x into a column vector, and x[None, :] turns x into a row vector.
+        #       Subtracting one from the other gives the pairwise differences (via broadcasting).
+        distances2 = (x[:, None] - x[None, :])**2
         # Compute the kernel in this dimension
-        K1d = variance * np.exp(-0.5 * dx2 / length_scale**2)
+        K = variance * np.exp(-0.5 * distances2 / length_scale**2)
         # Add small jitter to the diagonal to make sure K is SPD to numerical precision
-        K1d += np.eye(K1d.shape[0])*1e-8*variance
+        K += np.eye(K.shape[0])*1e-8*variance
         # Cholesky decomposition
         try:
-            L1d = np.linalg.cholesky(K1d)
+            L = np.linalg.cholesky(K)
         except np.linalg.LinAlgError:
             # If Cholesky fails, add more jitter
-            K1d += np.eye(K1d.shape[0])*1e-5*variance
-            L1d = np.linalg.cholesky(K1d)
-        return L1d
+            K += np.eye(K.shape[0])*1e-5*variance
+            L = np.linalg.cholesky(K)
+        return L
 
     def gaussian_process(self, grid_shape: tuple[int, int] = None, length_scale: float = 1., variance: float = 1.):
         '''
@@ -209,57 +237,6 @@ class SDF_MRI(Level_Set_SDF):
         z = rand_gen.standard_normal((nx, ny))
         samples = Lx @ z @ Ly.T
         return samples
-    
-    def gaussian_process_sparse(self, grid_shape: tuple[int, int] = None, length_scale: float = 1., variance: float = 1., n_inducing: int = 100):
-        '''
-        Fast sparse GP sampling using inducing points for large grids. Does not exploit separability.
-        Args:
-            grid_shape: The shape of the grid to sample on (height, width). If None, uses self.V.shape
-            length_scale: The length scale of the Gaussian Process (larger -> smoother).
-            variance: The variance of the Gaussian Process (controls amplitude of function).
-            n_inducing: The number of inducing points to use.
-        Returns:
-            The sampled function.
-        '''
-        if grid_shape is None:
-            grid_shape = self.V.shape
-
-        h, w = grid_shape
-
-        # Create inducing points grid (much smaller)
-        n_ind_h = min(int(np.sqrt(n_inducing * h / w)), h)
-        n_ind_w = min(int(np.sqrt(n_inducing * w / h)), w)
-            
-        # Inducing points coordinates
-        y_ind = np.linspace(0, 1, n_ind_h)
-        x_ind = np.linspace(0, 1, n_ind_w)
-        y_ind_grid, x_ind_grid = np.meshgrid(y_ind, x_ind, indexing='ij')
-        inducing_coords = np.column_stack([x_ind_grid.ravel(), y_ind_grid.ravel()])
-            
-        # Full grid coordinates
-        y_coords = np.linspace(0, 1, h)
-        x_coords = np.linspace(0, 1, w)
-        y_full, x_full = np.meshgrid(y_coords, x_coords, indexing='ij')
-        full_coords = np.column_stack([x_full.ravel(), y_full.ravel()])
-            
-        # Compute kernels
-        K_uu = variance * np.exp(-0.5 * cdist(inducing_coords, inducing_coords)**2 / length_scale**2)
-        K_uu[np.diag_indices_from(K_uu)] += 1e-6
-            
-        K_uf = variance * np.exp(-0.5 * cdist(inducing_coords, full_coords)**2 / length_scale**2)
-            
-        # Cholesky of K_uu
-        L_uu = np.linalg.cholesky(K_uu)
-            
-        # Sample inducing values
-        z_u = np.random.normal(0, 1, len(inducing_coords))
-        u_samples = L_uu @ z_u
-        
-        # Project to full grid
-        A = np.linalg.solve(L_uu, K_uf)
-        samples = A.T @ np.linalg.solve(L_uu, u_samples)
-
-        return samples.reshape(grid_shape)
 
     def add_noise(self, arr: np.ndarray[float], noise_level: float = 1.) -> np.ndarray[float]: # Incomplete
         '''
@@ -290,7 +267,7 @@ class SDF_MRI_Circle(SDF_MRI):
     Daughter class of the SDF_MRI class.
     Initialises seed SDF for a circle.
     '''
-    def __init__(self, V: np.ndarray[float], r: float = 5, center_var: float = 0.1):
+    def __init__(self, V: Random_Speed_Field, r: float = 20, center_var: float = 0.1):
         '''
         Initialize the SDF_MRI_Circle class with speed field, radius and center position variance.
         There are several caveats with the generation of circle center position:
@@ -306,19 +283,28 @@ class SDF_MRI_Circle(SDF_MRI):
             center_var: The variance for center position sampling.
         '''
         super().__init__(V, SDF = None)
+        self.r = r
+        self.center_var = center_var
         # Set up seed SDF
         # \rho - R for analytical SDF of a circle
         # Randomise center location for location invariance
         center = np.random.multivariate_normal(mean=np.zeros(2), cov=np.eye(2) * center_var) * V.shape // 2 + np.array(V.shape) // 2
         vec = np.stack(np.indices(V.shape), axis = -1)
         self.sdf = np.linalg.norm(vec - center, axis=-1) - r  # Ensure SDF is non-negative outside the circle
+        #self.sdf = np.sqrt((vec - center) ** 2).sum(axis=-1) - r
+
+
+    def copy(self):
+        sdf_mri_circle_copy = SDF_MRI_Circle(self.V, r=self.r, center_var=self.center_var)
+        sdf_mri_circle_copy.sdf = self.sdf.copy()
+        return sdf_mri_circle_copy
 
 class SDF_MRI_Tube(SDF_MRI):
     '''
     Daughter class of the SDF_MRI class.
     Initialises seed SDF for a tube.
     '''
-    def __init__(self, V: np.ndarray[float], r: float = 10., dir: tuple[float, float] = None, point_var: float = 0.1):
+    def __init__(self, V: Random_Speed_Field, r: float = 10., dir: tuple[float, float] = None, point_var: float = 0.1):
         '''
         Initialize the SDF_MRI_Tube class with speed field, direction, point position variance, and radius.
         There are several caveats with the generation of tube point position:
@@ -334,16 +320,25 @@ class SDF_MRI_Tube(SDF_MRI):
             r: The tube radius.
         '''
         super().__init__(V, SDF = None)
+        self.r = r
+        self.point_var = point_var
         # Set up seed SDF
         # (r - p).n - t for analytical SDF of a tube
         # Find normal to dir
         if dir is not None:
             n = np.array([-dir[1], dir[0]])
             n /= np.linalg.norm(n)  # Normalize the normal vector
+            self.dir = dir / np.linalg.norm(dir)  # Normalize the direction vector
         else:
             angle = np.random.uniform(0, 2 * np.pi)
             n = np.array([np.cos(angle), np.sin(angle)])
+            self.dir = np.array([-n[1], n[0]])  # Perpendicular vector to n
         point = np.random.multivariate_normal(mean=np.zeros(2), cov=np.eye(2) * point_var) * V.shape // 2 + np.array(V.shape) // 2
         vec = np.stack(np.indices(V.shape), axis=-1)
         # Compute the signed distance function
         self.sdf = np.abs(np.dot(vec - point, n)) - r  # SDF is the distance to the tube
+
+    def copy(self):
+        sdf_mri_tube_copy = SDF_MRI_Tube(self.V, r=self.r, dir=self.dir, point_var=self.point_var)
+        sdf_mri_tube_copy.sdf = self.sdf.copy()
+        return sdf_mri_tube_copy

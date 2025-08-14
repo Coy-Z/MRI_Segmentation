@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from matplotlib.animation import FuncAnimation
 
-scanMagn = np.load('data/val/magn/carotid.npy')#[67:67+134,140:140+155,:65] # For Stanford data
-scanMask = np.load('data/val/mask/carotid.npy')
+scanMagn = np.load('data/train/magn/artificial_magn_8.npy')#[67:67+134,140:140+155,:65] # For Stanford data
+scanMask = np.load('data/train/mask/artificial_mask_8.npy')
 scan = {'Magnitude' : scanMagn, 'Mask' : scanMask}
 keys = ['Magnitude', 'Mask']
 numSlicesMagn = scanMagn.shape[0]

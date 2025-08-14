@@ -8,22 +8,22 @@ class Random_Speed_Field():
         - Add warping
         - Add dunder method implementation
     '''
-    def __init__(self, shape: tuple[int, int]):
+    def __init__(self, shape : tuple[int, int]):
         '''
         Initialize the speed field.
         Args:
-            shape: The shape of the speed field (height, width).
+            shape (tuple): The shape of the speed field (height, width).
         '''
         self.field = np.zeros(shape)
         self.shape = shape
 
-    def sinusoidal(self, freq_range: tuple[float], amp_range: tuple[float], num_modes: int = 2):
+    def sinusoidal(self, freq_range : tuple[float, float], amp_range : tuple[float, float], num_modes : int = 2):
         '''
         Apply a random sinusoidal modulation to the speed field.
         Args:
-            freq_range: The frequency range (min, max) for the sinusoidal modulation. A log-uniform distribution is then applied.
-            amp_range: The amplitude range (min, max) for the sinusoidal modulation. A uniform distribution is then applied.
-            num_modes: The number of sinusoidal modes to apply.
+            freq_range (tuple): The frequency range (min, max) for the sinusoidal modulation. A log-uniform distribution is then applied.
+            amp_range (tuple): The amplitude range (min, max) for the sinusoidal modulation. A uniform distribution is then applied.
+            num_modes (int): The number of sinusoidal modes to apply.
         '''
         y, x = np.indices(self.field.shape)
         # Center the origin
@@ -39,12 +39,12 @@ class Random_Speed_Field():
             self.field += amplitude * np.sin(2 * np.pi * frequency * (vec @ np.array([np.cos(angle), np.sin(angle)]) + phase))
         return
 
-    def affine(self, grad_range: tuple[float], bias_range: tuple[float]):
+    def affine(self, grad_range : tuple[float, float], bias_range : tuple[float, float]):
         '''
         Apply a random affine modulation to the speed field.
         Args:
-            grad_range: The gradient range (min, max) for the affine transformation. A uniform distribution is then applied.
-            bias_range: The bias range (min, max) for the affine transformation. A uniform distribution is then applied.
+            grad_range (tuple): The gradient range (min, max) for the affine transformation. A uniform distribution is then applied.
+            bias_range (tuple): The bias range (min, max) for the affine transformation. A uniform distribution is then applied.
 
         N.B. Adding several affine transformations yields a net affine transformation, so is useless.
         '''
@@ -54,16 +54,16 @@ class Random_Speed_Field():
         bias = np.random.uniform(*bias_range)
         self.field += (vec.T @ gradient).T + bias
         return
-    
-    def cholesky_rbf_1d(self, x, length_scale, variance):
+
+    def cholesky_rbf_1d(self, x : np.ndarray[float], length_scale : float, variance : float) -> np.ndarray[float]:
         '''
         Calculate the Cholesky decomposition of the 1D Radial Basis Function (RBF) kernel.
         Args:
-            x: The input array.
-            length_scale: The length scale of the RBF.
-            variance: The variance of the RBF.
+            x (np.ndarray): The input array.
+            length_scale (float): The length scale of the RBF.
+            variance (float): The variance of the RBF.
         Returns:
-            The Cholesky decomposition of the 1D RBF kernel.
+            The Cholesky decomposition of the 1D RBF kernel (np.ndarray).
         '''
         # Compute euclidian distances in this direction
         # Note: x[:, None] turns x into a column vector, and x[None, :] turns x into a row vector.
@@ -82,16 +82,17 @@ class Random_Speed_Field():
             L = np.linalg.cholesky(K)
         return L
 
-    def gaussian_process(self, grid_shape: tuple[int, int] = None, length_scale: float = 1., variance: float = 1.):
+    def gaussian_process(self, grid_shape : tuple[int, int] = None, length_scale : float = 1.,
+                         variance : float = 1.) -> np.ndarray[float]:
         '''
         Sample random smooth functions from an untrained Gaussian Process. We exploit the separable nature
         of the RBF kernel on a structured grid, i.e. K = Kronecker(K_x, K_y), hence only requiring compute in 1D.
         Args:
-            grid_shape: The shape of the grid to sample on (height, width). If None, uses self.V.shape
-            length_scale: The length scale of the Gaussian Process (larger -> smoother).
-            variance: The variance of the Gaussian Process (controls amplitude of function).
+            grid_shape (tuple): The shape of the grid to sample on (height, width). If None, uses self.V.shape
+            length_scale (float): The length scale of the Gaussian Process (larger -> smoother).
+            variance (float): The variance of the Gaussian Process (controls amplitude of function).
         Returns:
-            The sampled function.
+            The sampled function (np.ndarray).
         '''
         if grid_shape is None:
             grid_shape = self.shape
@@ -110,14 +111,17 @@ class Random_Speed_Field():
         z = rand_gen.standard_normal((nx, ny))
         samples = Lx @ z @ Ly.T
         return samples
-    
-    def random_coherent(self, log_length_scale_mean: float = 1., log_length_scale_variance: float = 1., variance: float = 1.):
+
+    def random_coherent(self, log_length_scale_mean : float = 1., log_length_scale_variance : float = 1., variance : float = 1.):
         '''
         Add a random coherent photo (sampled from an untrained Gaussian Process).
         Args:
-            length_scale_mean: The mean length scale for the Gaussian Process (larger -> smoother).
-            length_scale_variance: The variance of the length scale for the Gaussian Process.
-            variance: The variance for the Gaussian Process (controls amplitude of function).
+            length_scale_mean (float): The mean length scale for the Gaussian Process (larger -> smoother).
+            length_scale_variance (float): The variance of the length scale for the Gaussian Process.
+            variance (float): The variance for the Gaussian Process (controls amplitude of function).
+
+        N.B. We use a log-normal distribution for the length scale to ensure positivity,
+            and also since it makes more physical sense
         '''
         length_scale = np.exp(np.random.normal(log_length_scale_mean, log_length_scale_variance))
         self.field += self.gaussian_process(grid_shape=self.shape, length_scale=length_scale, variance=variance)
@@ -132,14 +136,13 @@ class Random_Speed_Field():
 class Level_Set_SDF():
     '''
     Class to use Level Set Iterative Methods to warp SDFs.
-
     '''
-    def __init__(self, V: Random_Speed_Field, SDF: np.ndarray[float] = None):
+    def __init__(self, V : Random_Speed_Field, SDF : np.ndarray[float] = None):
         '''
         Initialize the Level_Set_SDF class with a seed SDF and speed field.
         Args:
-            V: Speed field
-            SDF: Initial signed distance field (must be the same size as V)
+            V (Random_Speed_Field): Speed field
+            SDF (np.ndarray or None): Initial signed distance field (must be the same size as V)
         '''
         self.V = V
         self.dt = min(0.05 / self.V.field.max(), 0.02) # Time step size based on max speed -> enforces CFL conditions. Courant Number <= 0.05
@@ -149,7 +152,21 @@ class Level_Set_SDF():
         else:
             self.sdf = np.zeros_like(V)
 
-    def update_speed_field(self, V: Random_Speed_Field):
+    def copy(self) -> 'Level_Set_SDF':
+        '''
+        Deep copy method for Level_Set_SDF.
+        Returns:
+            A deep copy of the Level_Set_SDF instance (Level_Set_SDF).
+        '''
+        level_set_copy = Level_Set_SDF(self.V, self.sdf)
+        return level_set_copy
+
+    def update_speed_field(self, V : Random_Speed_Field):
+        '''
+        Update the speed field associated with the Level_Set_SDF instance.
+        Args:
+            V (Random_Speed_Field): New speed field
+        '''
         assert V.field.shape == self.V.field.shape, "New speed field must be the same shape as current speed field."
         self.V = V
         self.dt = min(0.05 / self.V.field.max(), 0.02) # Update time step size
@@ -158,7 +175,7 @@ class Level_Set_SDF():
         '''
         Get the 4 cardinal derivatives of the SDF.
         Returns:
-            Dn, Ds, De, Dw: The 4 cardinal derivatives (North, South, East, West)
+            Dn, Ds, De, Dw (tuple): The 4 cardinal derivatives (North, South, East, West)
         '''
         # Pad SDF edges
         padded_sdf = np.pad(self.sdf, pad_width=1, mode='edge')
@@ -187,7 +204,7 @@ class Level_Set_SDF():
         Compute quadrature summed directional gradients (smoothing ridges/troughs).
         This helps us enforce upwinding.
         Returns:
-            nabla_pos, nabla_neg: The positive and negative nabla fields (for selection dependent on sgn(V))
+            nabla_pos, nabla_neg (tuple): The positive and negative nabla fields (for selection dependent on sgn(V))
         '''
         Dn, Ds, De, Dw = self.get_derivatives()
 
@@ -199,12 +216,12 @@ class Level_Set_SDF():
 
         return nabla_pos, nabla_neg # Order: positive, negative
 
-    def step_sdf_numerical_grad(self, iterations: int = 20, dt: float = None):
+    def step_sdf_numerical_grad(self, iterations : int = 20, dt : float = None):
         '''
         Perform a time step of the SDF update.
         Args:
-            iterations: The number of update iterations.
-            dt: The time step size.
+            iterations (int): The number of update iterations.
+            dt (float): The time step size.
         '''
         if dt is None:
             dt = self.dt
@@ -215,13 +232,13 @@ class Level_Set_SDF():
             self.sdf -= grad * dt
         return
 
-    def step_sdf_analytical_grad(self, iterations: int = 20, dt: float = None):
+    def step_sdf_analytical_grad(self, iterations : int = 20, dt : float = None):
         '''
         Perform a time step of the SDF update, using the Eikonal assumption : grad = 1.
         If iterations is large, use Level_Set_SDF.step_sdf_numerical_grad to avoid blow up.
         Args:
-            iterations: The number of update iterations.
-            dt: The time step size.
+            iterations (int): The number of update iterations.
+            dt (float): The time step size.
         '''
         if dt is None:
             dt = self.dt
@@ -235,39 +252,44 @@ class Level_Set_SDF():
         '''
         Get the current SDF (testing function).
         Returns:
-            The current SDF.
+            The current SDF (np.ndarray).
         '''
         return self.sdf.copy()
-
 
 class SDF_MRI(Level_Set_SDF):
     '''
     Daughter class of the Level_Set_SDF class.
     This allows us to turn SDFs into MRI-like data and corresponding segmentation masks.
     '''
-    def __init__(self, V: Random_Speed_Field, SDF: np.ndarray[float] = None):
+    def __init__(self, V : Random_Speed_Field, SDF : np.ndarray[float] = None):
+        '''
+        Initialize the SDF_MRI class with a seed SDF and speed field.
+        Args:
+            V (Random_Speed_Field): Speed field
+            SDF (np.ndarray or None): Initial signed distance field (must be the same size as V)
+        '''
         super().__init__(V, SDF)
         self.N = V.field.shape[0] # We will assume we are always generating square data.
 
-    def activation(self, array: np.ndarray[float], mean_epsilon: float) -> np.ndarray[float]:
+    def activation(self, array : np.ndarray[float], mean_epsilon : float) -> np.ndarray[float]:
         '''
         Apply an activation function to the array to acquire MRI magnitude scan-like behaviour.
         Args:
-            array: The input array to apply the activation function to.
-            mean_epsilon: A value to determine the boundary layer thickness.
+            array (np.ndarray): The input array to apply the activation function to.
+            mean_epsilon (float): A value to determine the boundary layer thickness.
         '''
         epsilon = np.random.normal(mean_epsilon, 0.1)
         return 0.5 * (1 - np.tanh(3 * array / epsilon))
 
-    def cholesky_rbf_1d(self, x, length_scale, variance):
+    def cholesky_rbf_1d(self, x : np.ndarray[float], length_scale : float, variance : float) -> np.ndarray[float]:
         '''
         Calculate the Cholesky decomposition of the 1D Radial Basis Function (RBF) kernel.
         Args:
-            x: The input array.
-            length_scale: The length scale of the RBF.
-            variance: The variance of the RBF.
+            x (np.ndarray): The input array.
+            length_scale (float): The length scale of the RBF.
+            variance (float): The variance of the RBF.
         Returns:
-            The Cholesky decomposition of the 1D RBF kernel.
+            The Cholesky decomposition of the 1D RBF kernel (np.ndarray).
         '''
         # Compute euclidian distances in this direction
         # Note: x[:, None] turns x into a column vector, and x[None, :] turns x into a row vector.
@@ -286,16 +308,17 @@ class SDF_MRI(Level_Set_SDF):
             L = np.linalg.cholesky(K)
         return L
 
-    def gaussian_process(self, grid_shape: tuple[int, int] = None, length_scale: float = 1., variance: float = 1.):
+    def gaussian_process(self, grid_shape : tuple[int, int] = None, length_scale : float = 1.,
+                         variance : float = 1.) -> np.ndarray[float]:
         '''
         Sample random smooth functions from an untrained Gaussian Process. We exploit the separable nature
         of the RBF kernel on a structured grid, i.e. K = Kronecker(K_x, K_y), hence only requiring compute in 1D.
         Args:
-            grid_shape: The shape of the grid to sample on (height, width). If None, uses self.V.shape
-            length_scale: The length scale of the Gaussian Process (larger -> smoother).
-            variance: The variance of the Gaussian Process (controls amplitude of function).
+            grid_shape (tuple): The shape of the grid to sample on (height, width). If None, uses self.V.shape
+            length_scale (float): The length scale of the Gaussian Process (larger -> smoother).
+            variance (float): The variance of the Gaussian Process (controls amplitude of function).
         Returns:
-            The sampled function.
+            The sampled function (np.ndarray).
         '''
         if grid_shape is None:
             grid_shape = self.V.shape
@@ -315,12 +338,12 @@ class SDF_MRI(Level_Set_SDF):
         samples = Lx @ z @ Ly.T
         return samples
     
-    def add_noise(self, arr: np.ndarray[float], noise_level: float = 1.) -> np.ndarray[float]: # Incomplete
+    def add_noise(self, arr : np.ndarray[float], noise_level : float = 1.):
         '''
         Add fine Gaussian noise and smooth noise (sampled Gaussian Process) to the SDF.
         Args:
-            arr: The input array to add noise to.
-            noise_level: The level of noise to add (order-of-magnitude).
+            arr (np.ndarray): The input array to add noise to.
+            noise_level (float): The level of noise to add (order-of-magnitude).
         '''
         white_noise = np.random.normal(0, noise_level/5, arr.shape)
         # Generate smooth noise using Gaussian Process
@@ -328,11 +351,11 @@ class SDF_MRI(Level_Set_SDF):
         arr += white_noise + smooth_noise
         return
 
-    def return_mask_magn_pair(self):
+    def return_mask_magn_pair(self) -> tuple[np.ndarray[float], np.ndarray[float]]:
         '''
         Get the mask and magnitude pair from the SDF.
         Returns:
-            A tuple containing the mask and magnitude arrays.
+            A tuple containing the mask and magnitude arrays (tuple).
         '''
         mask = np.where(self.sdf.copy() < 0, 1, 0)
         magn = self.activation(self.sdf.copy(), mean_epsilon = 0.15 * self.N) * 15 # Magnitude ~ 15
@@ -344,7 +367,7 @@ class SDF_MRI_Circle(SDF_MRI):
     Daughter class of the SDF_MRI class.
     Initialises seed SDF for a circle.
     '''
-    def __init__(self, V: Random_Speed_Field, r: float = 20, center_var: float = 0.1):
+    def __init__(self, V : Random_Speed_Field, r : float = 20, center_var : float = 0.1):
         '''
         Initialize the SDF_MRI_Circle class with speed field, radius and center position variance.
         There are several caveats with the generation of circle center position:
@@ -355,9 +378,9 @@ class SDF_MRI_Circle(SDF_MRI):
            This is achieved via the tails of the Gaussian.
         4. Empty images should also exist in the training set.
         Args:
-            r: The circle radius.
-            V: The speed field.
-            center_var: The variance for center position sampling.
+            r (float): The circle radius.
+            V (Random_Speed_Field): The speed field.
+            center_var (float): The variance for center position sampling.
         '''
         super().__init__(V, SDF = None)
         self.r = r
@@ -370,18 +393,12 @@ class SDF_MRI_Circle(SDF_MRI):
         self.sdf = np.linalg.norm(vec - center, axis=-1) - r  # Ensure SDF is non-negative outside the circle
         #self.sdf = np.sqrt((vec - center) ** 2).sum(axis=-1) - r
 
-
-    def copy(self):
-        sdf_mri_circle_copy = SDF_MRI_Circle(self.V, r=self.r, center_var=self.center_var)
-        sdf_mri_circle_copy.sdf = self.sdf.copy()
-        return sdf_mri_circle_copy
-
 class SDF_MRI_Tube(SDF_MRI):
     '''
     Daughter class of the SDF_MRI class.
     Initialises seed SDF for a tube.
     '''
-    def __init__(self, V: Random_Speed_Field, r: float = 10., dir: tuple[float, float] = None, point_var: float = 0.1):
+    def __init__(self, V : Random_Speed_Field, r : float = 10., dir : tuple[float, float] = None, point_var : float = 0.1):
         '''
         Initialize the SDF_MRI_Tube class with speed field, direction, point position variance, and radius.
         There are several caveats with the generation of tube point position:
@@ -392,9 +409,9 @@ class SDF_MRI_Tube(SDF_MRI):
            This is achieved via the tails of the Gaussian.
         4. Empty images should also exist in the training set.
         Args:
-            dir: The direction vector of the tube. If None, a random direction will be used.
-            point_var: The variance for point position sampling (to pin the tube).
-            r: The tube radius.
+            r (float): The tube radius.
+            dir (tuple): The direction vector of the tube. If None, a random direction will be used.
+            point_var (float): The variance for point position sampling (to pin the tube).
         '''
         super().__init__(V, SDF = None)
         self.r = r
@@ -414,8 +431,3 @@ class SDF_MRI_Tube(SDF_MRI):
         vec = np.stack(np.indices(V.shape), axis=-1)
         # Compute the signed distance function
         self.sdf = np.abs(np.dot(vec - point, n)) - r  # SDF is the distance to the tube
-
-    def copy(self):
-        sdf_mri_tube_copy = SDF_MRI_Tube(self.V, r=self.r, dir=self.dir, point_var=self.point_var)
-        sdf_mri_tube_copy.sdf = self.sdf.copy()
-        return sdf_mri_tube_copy

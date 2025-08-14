@@ -12,16 +12,18 @@ class MRIDataset(Dataset):
     '''
     A custom dataset class for processing .npy 3D MRI density scans.
     '''
-    def __init__(self, root : str, phase : str = 'val', transform = None, target_transform = None, augment = None):
+    def __init__(self, root : str, phase : str = 'val', transform : T.Compose = None,
+                 target_transform : T.Compose = None, augment : T.Compose = None):
         '''
         Initialise the MRIDataset daughter class of torch.utils.data.Dataset.
 
         Args:
             root (str): The string directory of the data.
             phase (str): Indicating whether it is a training or validation dataset.
-            transform: The deterministic component of transform (i.e. no random flipping -> validation transform).
-            augment: The stochastic component of transform (e.g. random horizontal flip -> additional training transform).
-            
+            transform (T.Compose): The deterministic component of magn transform (i.e. no random flipping -> validation transform).
+            target_transform (T.Compose): The deterministic component of mask transform (i.e. no random flipping -> validation transform).
+            augment (T.Compose): The stochastic component of transform (e.g. random horizontal flip -> additional training transform).
+
         N.B. transform and augment are separate because we must merge the scan and mask to ensure consistent augmentation.
         '''
         super().__init__()
@@ -77,8 +79,8 @@ class MRIDataset(Dataset):
     
     #def __getitems__(self, idxs : list[int]) -> list[tuple[torch.Tensor, torch.Tensor]]:
         return
-    
-    def grayscale_to_rgb(self, scan: np.ndarray[float], cmap : str = 'grey') -> np.ndarray[float]:
+
+    def grayscale_to_rgb(self, scan : np.ndarray[float], cmap : str = 'grey') -> np.ndarray[float]:
         '''
         Colours a greyscale intensity plot.
 
@@ -174,7 +176,7 @@ class Combined_Loss(nn.Module):
         dice_loss = 1 - dice_coeff
         return dice_loss.mean() # Average over depth
 
-    def FocalTverskyLoss(self, output: torch.Tensor, target : torch.Tensor, epsilon : float = 1e-8) -> float:
+    def FocalTverskyLoss(self, output : torch.Tensor, target : torch.Tensor, epsilon : float = 1e-8) -> float:
         '''
         Calculate the Focal Tversky loss of a predicted mask with respect to the ground truth.
 
@@ -304,7 +306,7 @@ def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', tra
 
     return model.to(device) # Move the model to the specified device
 
-def get_transform(data: str = 'target', phase: str = 'train') -> T.Compose:
+def get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
     '''
     Get the appropriate transform for the input data.
     Args:

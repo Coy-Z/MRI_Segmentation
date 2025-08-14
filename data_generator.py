@@ -1,7 +1,7 @@
 from utils import data_gen_util as dg
 import numpy as np
 
-def data_gen(V: dg.Random_Speed_Field, SDF: dg.SDF_MRI_Circle | dg.SDF_MRI_Tube, depth: int = 10):
+def data_gen(V : dg.Random_Speed_Field, SDF : dg.SDF_MRI_Circle | dg.SDF_MRI_Tube, depth : int = 10) -> tuple[np.ndarray, np.ndarray]:
     mask3D = []
     magn3D = []
     SDF.update_speed_field(V)
@@ -22,7 +22,7 @@ def data_gen(V: dg.Random_Speed_Field, SDF: dg.SDF_MRI_Circle | dg.SDF_MRI_Tube,
     magn = np.array(magn3D)
     return mask, magn
 
-def data_generator(num: int = 10, depth: int = 10):
+def data_generator(num : int = 10, depth : int = 10) -> tuple[list[np.ndarray], list[np.ndarray]]:
     masks = []
     magnitudes = []
     for _ in range(num):
@@ -46,7 +46,7 @@ def data_generator(num: int = 10, depth: int = 10):
         magnitudes.append(magn)
     return masks, magnitudes
 
-def data_saver(masks, magnitudes, dir):
+def data_saver(masks : list[np.ndarray], magnitudes : list[np.ndarray], dir: str):
     assert len(masks) == len(magnitudes), "Masks and magnitudes must have the same length."
     for i in range(len(masks)):
         mask_path = f"{dir}/mask/artificial_{i}.npy"

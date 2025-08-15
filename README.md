@@ -39,8 +39,8 @@ Note: The real MRI data is not yet publicly available.
 ## Running the repo
 
 Clone the repo, then run
-```python
-pip install requirements.txt
+```bash
+pip install -r requirements.txt
 ```
 and the install torch from the website https://pytorch.org/get-started/locally/.
 

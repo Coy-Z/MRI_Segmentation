@@ -22,8 +22,8 @@ sdf_mri_tube = SDF_MRI_Tube(Vt, r = 10.)
 #dn, ds, de, dw = sdf_mri_circ.get_derivatives()
 #initial_nabla_pos, initial_nabla_neg = sdf_mri_circ.get_nablas()
 
-sdf_mri_circ.step_sdf_analytical_grad(iterations=100)
-sdf_mri_tube.step_sdf_analytical_grad(iterations=100)
+sdf_mri_circ.step_sdf_numerical_grad(iterations=100)
+sdf_mri_tube.step_sdf_numerical_grad(iterations=100)
 maskc, magnc = sdf_mri_circ.return_mask_magn_pair()
 maskt, magnt = sdf_mri_tube.return_mask_magn_pair()
 

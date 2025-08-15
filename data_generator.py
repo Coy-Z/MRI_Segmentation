@@ -1,7 +1,7 @@
 from utils import data_gen_util as dg
 import numpy as np
 
-def data_gen(V : dg.Random_Speed_Field, SDF : dg.SDF_MRI_Circle | dg.SDF_MRI_Tube, depth : int = 10) -> tuple[np.ndarray, np.ndarray]:
+def data_gen(V : dg.Random_Speed_Field, SDF : dg.SDF_MRI_Circle | dg.SDF_MRI_Tube, depth : int = 100) -> tuple[np.ndarray, np.ndarray]:
     mask3D = []
     magn3D = []
     SDF.update_speed_field(V)
@@ -10,11 +10,18 @@ def data_gen(V : dg.Random_Speed_Field, SDF : dg.SDF_MRI_Circle | dg.SDF_MRI_Tub
         edit_flag = np.random.randint(0, 2)
         if edit_flag:
             V.reset()
-            V.sinusoidal(freq_range=(0.01, 0.05), amp_range=(0, 3), num_modes=4) # High frequency, low amplitude
-            V.sinusoidal(freq_range=(0.001, 0.01), amp_range=(3, 7), num_modes=2) # Low frequency, high amplitude
-            V.affine(grad_range=(-0.1, 0.1), bias_range=(-1, 2))
+            if type(SDF) == dg.SDF_MRI_Circle:
+                V.sinusoidal(freq_range=(0.01, 0.03), amp_range=(15, 30), num_modes=2)
+                V.random_coherent(log_length_scale_mean=-2, log_length_scale_variance=0.5, amplitude_variance=20)
+                V.random_coherent(log_length_scale_mean=0, log_length_scale_variance=1, amplitude_variance=30)
+                V.affine(grad_range=(-0.05, 0.05), bias_range=(0, 0))
+            else: # type is dg.SDF_MRI_Tube
+                V.random_coherent(log_length_scale_mean=-2, log_length_scale_variance=0.5, amplitude_variance=10)
+                V.random_coherent(log_length_scale_mean=0, log_length_scale_variance=1, amplitude_variance=40)
+                V.affine(grad_range=(-0.05, 0.05), bias_range=(-1, 0))
             SDF.update_speed_field(V)
-        SDF.step_sdf_analytical_grad(iterations = 20)
+        SDF.step_sdf_analytical_grad(iterations = 10)
+        #SDF.step_sdf_numerical_grad(iterations = 10)
         mask, magn = SDF.return_mask_magn_pair()
         mask3D.append(mask)
         magn3D.append(magn)
@@ -22,25 +29,22 @@ def data_gen(V : dg.Random_Speed_Field, SDF : dg.SDF_MRI_Circle | dg.SDF_MRI_Tub
     magn = np.array(magn3D)
     return mask, magn
 
-def data_generator(num : int = 10, depth : int = 10) -> tuple[list[np.ndarray], list[np.ndarray]]:
+def data_generator(num : int = 10, depth : int = 100) -> tuple[list[np.ndarray], list[np.ndarray]]:
     masks = []
     magnitudes = []
     for _ in range(num):
         V = dg.Random_Speed_Field((100, 100))
-        V.sinusoidal(freq_range=(0.01, 0.05), amp_range=(0, 2), num_modes=4)
-        V.sinusoidal(freq_range=(0.001, 0.01), amp_range=(2, 5), num_modes=2) 
         V.affine(grad_range=(-0.1, 0.1), bias_range=(-1, 2))
         type_rand = np.random.randint(0, 2)
         if type_rand:
-            V.sinusoidal(freq_range=(0.01, 0.03), amp_range=(15, 30), num_modes=2)
-            V.random_coherent(log_length_scale_mean=-2.3, log_length_scale_variance=0.5, variance=40) # Low frequency, high amplitude
-            V.random_coherent(log_length_scale_mean=0, log_length_scale_variance=1, variance=30)  # High frequency, low amplitude
-            sdf = dg.SDF_MRI_Tube(V)
+            V.random_coherent(log_length_scale_mean=-2, log_length_scale_variance=0.5, amplitude_variance=10)
+            V.random_coherent(log_length_scale_mean=0, log_length_scale_variance=1, amplitude_variance=40)
+            sdf = dg.SDF_MRI_Tube(V, smoothed = True)
         else:
+            V.sinusoidal(freq_range=(0.01, 0.03), amp_range=(15, 30), num_modes=2)
+            V.random_coherent(log_length_scale_mean=-2.3, log_length_scale_variance=0.5, amplitude_variance=40)
+            V.random_coherent(log_length_scale_mean=0, log_length_scale_variance=1, amplitude_variance=30)
             sdf = dg.SDF_MRI_Circle(V)
-            V.random_coherent(log_length_scale_mean=-2, log_length_scale_variance=0.5, variance=10) # Low frequency, high amplitude
-            V.random_coherent(log_length_scale_mean=0, log_length_scale_variance=1, variance=40)  # High frequency, low amplitude
-            sdf = dg.SDF_MRI_Tube(V)
         mask, magn = data_gen(V, sdf, depth)
         masks.append(mask)
         magnitudes.append(magn)
@@ -54,5 +58,5 @@ def data_saver(masks : list[np.ndarray], magnitudes : list[np.ndarray], dir: str
         np.save(mask_path, masks[i])
         np.save(magn_path, magnitudes[i])
 
-masks, magnitudes = data_generator(10, 10)
+masks, magnitudes = data_generator(10, 100)
 data_saver(masks, magnitudes, "C:/Users/ZHUCK/Uni/UROP25/FCNResNet_Segmentation/data/train")

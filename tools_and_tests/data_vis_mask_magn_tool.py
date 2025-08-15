@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from matplotlib.animation import FuncAnimation
 
-scanMagn = np.load('data/train/magn/artificial_magn_8.npy')#[67:67+134,140:140+155,:65] # For Stanford data
-scanMask = np.load('data/train/mask/artificial_mask_8.npy')
+scanMagn = np.load('data/train/magn/artificial_2.npy')#[67:67+134,140:140+155,:65] # For Stanford data
+scanMask = np.load('data/train/mask/artificial_2.npy')
 scan = {'Magnitude' : scanMagn, 'Mask' : scanMask}
 keys = ['Magnitude', 'Mask']
 numSlicesMagn = scanMagn.shape[0]
@@ -45,6 +45,11 @@ def updateAnim(frame):
 slider.on_changed(updateSlide)
 
 ani = FuncAnimation(fig, updateAnim, frames = min(numSlicesMagn, numSlicesMask), interval = 100, blit = False)
+
+# Save animation as GIF to prevent the warning and ensure it's properly rendered
+print("Saving animation as GIF...")
+ani.save('images/thin_tube_thin_edge_resolved.gif', writer='pillow', fps=10)
+print("Animation saved as thin_tube_thin_edge_resolved.gif")
 
 plt.show()
 

@@ -112,7 +112,7 @@ class Random_Speed_Field():
         samples = Lx @ z @ Ly.T
         return samples
 
-    def random_coherent(self, log_length_scale_mean : float = 1., log_length_scale_variance : float = 1., variance : float = 1.):
+    def random_coherent(self, log_length_scale_mean : float = 1., log_length_scale_variance : float = 1., amplitude_variance : float = 1.):
         '''
         Add a random coherent photo (sampled from an untrained Gaussian Process).
         Args:
@@ -124,7 +124,7 @@ class Random_Speed_Field():
             and also since it makes more physical sense
         '''
         length_scale = np.exp(np.random.normal(log_length_scale_mean, log_length_scale_variance))
-        self.field += self.gaussian_process(grid_shape=self.shape, length_scale=length_scale, variance=variance)
+        self.field += self.gaussian_process(grid_shape=self.shape, length_scale=length_scale, variance=amplitude_variance)
         return
     
     def reset(self):
@@ -398,7 +398,7 @@ class SDF_MRI_Tube(SDF_MRI):
     Daughter class of the SDF_MRI class.
     Initialises seed SDF for a tube.
     '''
-    def __init__(self, V : Random_Speed_Field, r : float = 10., dir : tuple[float, float] = None, point_var : float = 0.1):
+    def __init__(self, V : Random_Speed_Field, r : float = 10., dir : tuple[float, float] = None, point_var : float = 0.1, smoothed : bool = False):
         '''
         Initialize the SDF_MRI_Tube class with speed field, direction, point position variance, and radius.
         There are several caveats with the generation of tube point position:
@@ -412,6 +412,7 @@ class SDF_MRI_Tube(SDF_MRI):
             r (float): The tube radius.
             dir (tuple): The direction vector of the tube. If None, a random direction will be used.
             point_var (float): The variance for point position sampling (to pin the tube).
+            smoothed (bool): Modifies the initial SDF to be smoothed.
         '''
         super().__init__(V, SDF = None)
         self.r = r
@@ -430,4 +431,7 @@ class SDF_MRI_Tube(SDF_MRI):
         point = np.random.multivariate_normal(mean=np.zeros(2), cov=np.eye(2) * point_var) * V.shape // 2 + np.array(V.shape) // 2
         vec = np.stack(np.indices(V.shape), axis=-1)
         # Compute the signed distance function
-        self.sdf = np.abs(np.dot(vec - point, n)) - r  # SDF is the distance to the tube
+        if smoothed:
+            self.sdf = np.sqrt((np.dot(vec - point, n))**2 + 2) - r  # SDF is the distance to the tube
+        else:
+            self.sdf = np.abs(np.dot(vec - point, n)) - r  # SDF is the distance to the tube

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from matplotlib.animation import FuncAnimation
 
-scan = np.load('data/train/mask/Aorta_Warp_0.npy')
+scan = np.load('data/mask.npy')
 print(scan.shape)
 numSlices = scan.shape[0]
 fig, ax = plt.subplots(1, 2, figsize = (14, 7))

@@ -58,5 +58,5 @@ def data_saver(masks : list[np.ndarray], magnitudes : list[np.ndarray], dir: str
         np.save(mask_path, masks[i])
         np.save(magn_path, magnitudes[i])
 
-masks, magnitudes = data_generator(10, 100)
-data_saver(masks, magnitudes, "C:/Users/ZHUCK/Uni/UROP25/FCNResNet_Segmentation/data/train")
+masks, magnitudes = data_generator(100, 100)
+data_saver(masks, magnitudes, "./data/train")

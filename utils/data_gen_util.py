@@ -337,18 +337,19 @@ class SDF_MRI(Level_Set_SDF):
         z = rand_gen.standard_normal((nx, ny))
         samples = Lx @ z @ Ly.T
         return samples
-    
-    def add_noise(self, arr : np.ndarray[float], noise_level : float = 1.):
+
+    def add_noise(self, arr : np.ndarray[float], mask : np.ndarray[float], noise_level : float = 1.):
         '''
         Add fine Gaussian noise and smooth noise (sampled Gaussian Process) to the SDF.
         Args:
             arr (np.ndarray): The input array to add noise to.
+            mask (np.ndarray): The mask array to prevent adding coherent noise to certain regions.
             noise_level (float): The level of noise to add (order-of-magnitude).
         '''
         white_noise = np.random.normal(0, noise_level/5, arr.shape)
         # Generate smooth noise using Gaussian Process
         smooth_noise = self.gaussian_process(grid_shape = arr.shape, length_scale = self.N / 1000, variance = noise_level)
-        arr += white_noise + smooth_noise
+        arr += (1 - mask) * white_noise + smooth_noise
         return
 
     def return_mask_magn_pair(self) -> tuple[np.ndarray[float], np.ndarray[float]]:
@@ -359,7 +360,7 @@ class SDF_MRI(Level_Set_SDF):
         '''
         mask = np.where(self.sdf.copy() < 0, 1, 0)
         magn = self.activation(self.sdf.copy(), mean_epsilon = 0.15 * self.N) * 15 # Magnitude ~ 15
-        self.add_noise(magn, noise_level = 1)  # Add noise to the magnitude ~ 1
+        self.add_noise(magn, mask, noise_level = 1)  # Add noise to the magnitude ~ 1
         return mask, magn
 
 class SDF_MRI_Circle(SDF_MRI):

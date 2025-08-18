@@ -34,7 +34,7 @@ def data_generator(num : int = 10, depth : int = 100) -> tuple[list[np.ndarray],
     magnitudes = []
     for _ in range(num):
         V = dg.Random_Speed_Field((100, 100))
-        V.affine(grad_range=(-0.1, 0.1), bias_range=(-1, 2))
+        V.affine(grad_range=(-0.1, 0.1), bias_range=(-1.5, 2))
         type_rand = np.random.randint(0, 2)
         if type_rand:
             V.random_coherent(log_length_scale_mean=-2, log_length_scale_variance=0.5, amplitude_variance=10)

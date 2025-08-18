@@ -368,7 +368,7 @@ class SDF_MRI_Circle(SDF_MRI):
     Daughter class of the SDF_MRI class.
     Initialises seed SDF for a circle.
     '''
-    def __init__(self, V : Random_Speed_Field, r : float = 20, center_var : float = 0.1):
+    def __init__(self, V : Random_Speed_Field, r : float = 20, center_var : float = 0.2):
         '''
         Initialize the SDF_MRI_Circle class with speed field, radius and center position variance.
         There are several caveats with the generation of circle center position:

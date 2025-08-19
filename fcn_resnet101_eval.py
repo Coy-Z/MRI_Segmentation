@@ -40,7 +40,7 @@ model.to(device)
 
 # Load data: Optionally apply Gaussian smoothing
 #images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)
-images = np.load('data/val/magn/Aorta.npy')
+images = np.load('data/val/magn/Carotid.npy')
 
 # Inference
 masks = evaluation(model, images, device)

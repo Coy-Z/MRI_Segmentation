@@ -67,6 +67,8 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
                     with torch.set_grad_enabled(phase == 'train'):
                         outputs = model(scan)
                         pred_mask3d_logits = outputs['out']
+                        # If U-Net turns out to perform better, delete the above line and just use outputs.
+                        # In segmentation_util.py change the U_Net class to return just the tensor.
                         pred_mask3d = torch.argmax(outputs['out'], dim = 1)
                         loss = criterion(pred_mask3d_logits, mask3d)
 

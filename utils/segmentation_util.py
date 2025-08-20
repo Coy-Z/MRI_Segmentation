@@ -187,7 +187,7 @@ class U_Net(nn.Module):
         '''
         assert dims in [2, 3], "Invalid spatial dimensions"
         super().__init__()
-        if dims == 2:
+        if dims == 3:
             self.level_4 = nn.Sequential(
                 nn.Conv3d(512, 1024, kernel_size=3, padding=1),
                 nn.ReLU(inplace=True),
@@ -205,11 +205,17 @@ class U_Net(nn.Module):
         self.level_3 = U_Net_Skip_Block(dims, self.level_4, 256, 512)
         self.level_2 = U_Net_Skip_Block(dims, self.level_3, 128, 256)
         self.level_1 = U_Net_Skip_Block(dims, self.level_2, 64, 128)
-        self.level_0 = U_Net_Skip_Block(dims, self.level_1, 1, 64)
-        self.network = nn.Sequential(
-            self.level_0,
-            nn.Conv3d(64, num_classes, kernel_size=1)
-        )
+        self.level_0 = U_Net_Skip_Block(dims, self.level_1, 3, 64)
+        if dims == 3:
+            self.network = nn.Sequential(
+                self.level_0,
+                nn.Conv3d(64, num_classes, kernel_size=1)
+            )
+        else:
+            self.network = nn.Sequential(
+                self.level_0,
+                nn.Conv2d(64, num_classes, kernel_size=1)
+            )
     
     def forward(self, input : torch.Tensor) -> torch.Tensor:
         '''
@@ -222,7 +228,7 @@ class U_Net(nn.Module):
 
         * D is only present in 3D case.
         '''
-        return self.network(input)
+        return {"out": self.network(input)}
 
 
 class Combined_Loss(nn.Module):
@@ -455,7 +461,7 @@ def get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
         return T.Compose([
             T.ToImage(),
             T.ToDtype(torch.int64, scale=False),  # Keep integer labels, no scaling
-            T.Resize(size=(50, 50), interpolation=interpolation),
+            T.Resize(size=(64, 64), interpolation=interpolation),
         ])
     else: 
         interpolation = T.InterpolationMode.BILINEAR
@@ -463,7 +469,7 @@ def get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
             return T.Compose([
                 T.ToImage(),
                 T.ToDtype(torch.float32, scale=True),
-                T.Resize(size=(50, 50), interpolation=interpolation),
+                T.Resize(size=(64, 64), interpolation=interpolation),
                 #T.RandomResizedCrop(size = (50, 50), scale = (0.5, 1.5), interpolation = interpolation),  # vary size
                 T.GaussianBlur(kernel_size = 5, sigma = 0.1),
                 T.Lambda(clip_and_scale)
@@ -472,7 +478,7 @@ def get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
             return T.Compose([
                 T.ToImage(),
                 T.ToDtype(torch.float32, scale=True),
-                T.Resize(size=(50, 50), interpolation=interpolation),
+                T.Resize(size=(64, 64), interpolation=interpolation),
                 T.GaussianBlur(kernel_size = 5, sigma = 0.1),
                 T.Lambda(clip_and_scale)
             ])

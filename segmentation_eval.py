@@ -35,12 +35,13 @@ def evaluation(model, scan, device):
 
 # Device and model setup
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-model = get_model_instance_segmentation(num_classes = 2, trained = True)
-model.to(device)
+architecture = 'fcn_resnet50'
+model = get_model_instance_segmentation(num_classes = 2, device = device, architecture = architecture, trained = False)
 
 # Load data: Optionally apply Gaussian smoothing
 #images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)
-images = np.load('data/val/magn/Aorta.npy')
+target = 'Carotid'
+images = np.load(f'data/val/magn/{target}.npy')
 
 # Inference
 masks = evaluation(model, images, device)
@@ -65,8 +66,8 @@ ani = FuncAnimation(fig, updateAnim, frames = images.shape[0], interval = 100, b
 
 # Save animation as GIF to prevent the warning and ensure it's properly rendered
 print("Saving animation as GIF...")
-ani.save('images/segmentation_animation.gif', writer='pillow', fps=10)
-print("Animation saved as segmentation_animation.gif")
+ani.save(f'images/{architecture}_{target}.gif', writer='pillow', fps=10)
+print(f"Animation saved as {architecture}_{target}.gif")
 
 # Optionally show the plot if display is available
 try:

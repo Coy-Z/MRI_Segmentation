@@ -1,6 +1,7 @@
-# Segmenting MRI Density/Magnitude Scans with a Fully Convolutional Network (FCN) ResNet
+# Segmenting MRI Density/Magnitude Scans with a Fully Convolutional Network (FCN)
 
-This sub-project explores segmenting MRI scans with the built in FCN_ResNet_101 in PyTorch.
+This sub-project explores segmenting MRI scans with two FCN architectures: the built
+in FCN_ResNet_50 and FCN_ResNet_101 in PyTorch, and my own implementation of the U-Net.
 The application of this particular segmentation is to use the segmentation as a high
 quality first estimate for blood vessel boundaries, which will then be refined using
 an iterative solver. The refined boundaries will then be used as a prior for the Inverse

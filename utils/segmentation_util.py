@@ -7,12 +7,13 @@ import torchvision
 from torchvision.transforms import v2 as T
 from torch.utils.data import Dataset
 from typing import Sequence
+from custom_transforms import ToTensor, Resize, GaussianBlur, ClipAndScale
 
 class MRIDataset(Dataset):
     '''
     A custom dataset class for processing .npy 3D MRI density scans.
     '''
-    def __init__(self, root : str, phase : str = 'val', transform : T.Compose = None,
+    def __init__(self, root : str, phase : str = 'val', dims : int = 2, transform : T.Compose = None,
                  target_transform : T.Compose = None, augment : T.Compose = None):
         '''
         Initialise the MRIDataset daughter class of torch.utils.data.Dataset.
@@ -20,17 +21,20 @@ class MRIDataset(Dataset):
         Args:
             root (str): The string directory of the data.
             phase (str): Indicating whether it is a training or validation dataset.
+            dims (int): The number of dimensions for the MRI scans (2 or 3).
             transform (T.Compose): The deterministic component of magn transform (i.e. no random flipping -> validation transform).
             target_transform (T.Compose): The deterministic component of mask transform (i.e. no random flipping -> validation transform).
             augment (T.Compose): The stochastic component of transform (e.g. random horizontal flip -> additional training transform).
 
         N.B. transform and augment are separate because we must merge the scan and mask to ensure consistent augmentation.
         '''
+        assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D scans are supported."
         super().__init__()
         self.scans = list(sorted(os.listdir(os.path.join(root, "magn")))) # (N * D * H * W)
         self.masks = list(sorted(os.listdir(os.path.join(root, "mask")))) # (N * D * H * W)
         self.root = root
         self.phase = phase
+        self.dims = dims
         self.transform = transform
         self.target_transform = target_transform
         self.augment = augment
@@ -56,26 +60,36 @@ class MRIDataset(Dataset):
         mask_path = os.path.join(self.root, "mask", self.masks[idx])
         
         # Load data
-        scan = grayscale_to_rgb(np.load(scan_path)) # (D * H * W * 3)
+        scan = self.grayscale_to_rgb(np.load(scan_path)) # (D * H * W * 3)
         mask3d_raw = np.load(mask_path) # (D * H * W)
         
         if mask3d_raw.dtype == bool:
             mask3d_raw = mask3d_raw.astype(np.int64)  # False->0, True->1
         
         mask3d = mask3d_raw[..., np.newaxis] # (D * H * W * 1)
-
         # Apply transforms
         if self.transform:
-            scan = torch.stack([self.transform(slice) for slice in scan]) # (D * 3 * H * W)
+            scan = self.transform(scan) # 2D (D * 3 * H * W) or 3D (3 * D * H * W)
         if self.target_transform:
-            mask3d = torch.stack([self.target_transform(mask) for mask in mask3d]) # (D * 1 * H * W)
-        if self.augment and self.phase == 'train':
-            data = torch.cat([scan, mask3d], 1) # (D * 4 * H * W)
-            data = self.augment(data)
+            mask3d = self.target_transform(mask3d) # (D * 1 * H * W) or 3D (1 * D * H * W)
 
-            scan = data[:, :3, :, :] # (D * 3 * H * W)
-            mask3d = data[:, 3:, :, :] # (D * 1 * H * W)
-        return scan, mask3d.squeeze(1)
+        # Apply transforms
+        if self.dims == 2:
+            if self.augment and self.phase == 'train':
+                data = torch.cat([scan, mask3d], 1) # (D * 4 * H * W)
+                data = self.augment(data)
+
+                scan = data[:, :3, :, :] # (D * 3 * H * W)
+                mask3d = data[:, 3:, :, :] # (D * 1 * H * W)
+                return scan, mask3d.squeeze(1)
+        else:
+            if self.augment and self.phase == 'train':
+                data = torch.cat([scan, mask3d], 0) # (4 * D * H * W)
+                data = self.augment(data)
+
+                scan = data[:3, :, :, :] # (3 * D * H * W)
+                mask3d = data[:1, :, :, :] # (1 * D * H * W)
+                return scan, mask3d.squeeze(0)
     
     #def __getitems__(self, idxs : list[int]) -> list[tuple[torch.Tensor, torch.Tensor]]:
         return
@@ -104,6 +118,17 @@ class MRIDataset(Dataset):
             scan_rgb = scan_rgb[..., :3]  # Remove alpha channel (D * H * W * 3)
         
         return scan_rgb
+
+class FCNWrapper(torch.nn.Module):
+    '''
+    This class is purely to adjust the FCN_ResNets to output the tensor, instead of a dictionary.
+    '''
+    def __init__(self, fcn_model):
+        super().__init__()
+        self.fcn_model = fcn_model
+    
+    def forward(self, x):
+        return self.fcn_model(x)['out']
 
 class U_Net_Skip_Block(nn.Module):
     '''
@@ -339,53 +364,6 @@ class Combined_Loss(nn.Module):
         focal_tversky_loss = (1 - tversky_coeff) ** gamma
         return focal_tversky_loss.mean() # Average over depth
 
-def grayscale_to_rgb(scan : np.ndarray[float], cmap : str = 'inferno') -> np.ndarray[float]:
-    '''
-    Colours a greyscale intensity plot.
-
-    Args:
-        scan (np.ndarray): Input greyscale scan array (D * H * W).
-        cmap (string): Choice of colormap, out of the matplotlib strings - grey, bone, viridis, plasma, inferno etc...
-
-    Returns:
-        scan (np.ndarray): Output RGB scan array (D * H * W * 3).
-    '''
-    # Normalize to [0, 1] range first
-    scan_norm = (scan - scan.min()) / (scan.max() - scan.min() + 1e-8)
-
-    if cmap == 'inferno' or cmap == 'viridis':
-        # Simple fast approximation - can be replaced with lookup table for production
-        scan_rgb = np.stack([scan_norm, scan_norm, scan_norm], axis=-1) * 255
-    else:
-        # Fallback to matplotlib for other colormaps
-        cmap_func = plt.get_cmap(cmap)
-        scan_rgb = cmap_func(scan_norm) * 255 # (D * H * W * 4)
-        scan_rgb = scan_rgb[..., :3]  # Remove alpha channel (D * H * W * 3)
-    
-    return scan_rgb
-
-def clip_and_scale(tensor : torch.Tensor, low_clip : float = 1., high_clip : float = 99.) -> torch.Tensor:
-    '''
-    Normalize a torch tensor image by clipping and scaling to [0, 1].
-
-    Args:
-        tensor (torch.Tensor): Input image Float32 tensor (any shape).
-        low_clip (float): Lower percentile to clip at.
-        high_clip (float): Upper percentile to clip at.
-
-    Returns:
-        tensor (torch.Tensor): Normalized Float32 tensor scaled to [0, 1].
-    '''
-    # Clip
-    flat = tensor.flatten()
-    lower = torch.quantile(flat, low_clip / 100)
-    upper = torch.quantile(flat, high_clip / 100)
-    tensor = torch.clamp(tensor, min = lower, max = upper)
-
-    # Scale to [0, 1]
-    tensor = (tensor - tensor.min()) / (tensor.max() - tensor.min() + 1e-8)
-    return tensor
-
 def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
     '''
     Calculate the Intersection over Union (IoU) value between the predicted mask and ground truth.
@@ -407,7 +385,7 @@ def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
         return 1.0 if intersection == 0 else 0.0
     return float(intersection) / union
 
-def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', architecture : str = 'fcn_resnet101', trained : bool = False) -> torchvision.models.segmentation.fcn.FCN:
+def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', architecture : str = 'unet', trained : bool = False) -> torchvision.models.segmentation.fcn.FCN:
     '''
     Load an instance of the model of choice, with pre-trained weights.
 
@@ -428,6 +406,7 @@ def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', arc
         inter_channels = model.classifier[4].in_channels
         # Replace the final convolutional layer with a new one
         model.classifier[4] = nn.Conv2d(inter_channels, num_classes, kernel_size = 1)
+        model = FCNWrapper(model)
     elif architecture == 'fcn_resnet50':
         model = torchvision.models.segmentation.fcn_resnet50(weights = "COCO_WITH_VOC_LABELS_V1")
         # Replace the classifier with a new one, that has a user defined num_classes
@@ -435,8 +414,9 @@ def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', arc
         inter_channels = model.classifier[4].in_channels
         # Replace the final convolutional layer with a new one
         model.classifier[4] = nn.Conv2d(inter_channels, num_classes, kernel_size = 1)
+        model = FCNWrapper(model)
     elif architecture == 'unet':
-        model = U_Net(dims=2, num_classes=num_classes)  # Default to 2D U-Net
+        model = U_Net(dims=3, num_classes=num_classes)  # Default to 2D U-Net
     else:
         raise ValueError(f"Unknown architecture: {architecture}")
 
@@ -445,12 +425,14 @@ def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', arc
 
     return model.to(device) # Move the model to the specified device
 
-def get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
+def _get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
     '''
+    DEPRECATED
     Get the appropriate transform for the input data.
     Args:
         phase (str): The phase of the dataset, either 'train' or 'val'.
         data (str): The type of input data, either 'input' for scans or 'target' for masks.
+
     Returns:
         transform (T.Compose): The composed transform for the specified input type.
     '''
@@ -472,7 +454,7 @@ def get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
                 T.Resize(size=(64, 64), interpolation=interpolation),
                 #T.RandomResizedCrop(size = (50, 50), scale = (0.5, 1.5), interpolation = interpolation),  # vary size
                 T.GaussianBlur(kernel_size = 5, sigma = 0.1),
-                T.Lambda(clip_and_scale)
+                ClipAndScale()
             ])
         else:  # validation phase
             return T.Compose([
@@ -480,8 +462,42 @@ def get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
                 T.ToDtype(torch.float32, scale=True),
                 T.Resize(size=(64, 64), interpolation=interpolation),
                 T.GaussianBlur(kernel_size = 5, sigma = 0.1),
-                T.Lambda(clip_and_scale)
+                ClipAndScale()
             ])
+
+def get_transform(data : str = 'target', dims : int = 3, phase : str = 'train') -> T.Compose: # Need to add random flips for train and val phases.
+    '''
+    Get the appropriate transform for the input data.
+    Must apply to either 3D (D, H, W, C) or 2D (N, H, W, C).
+    Args:
+        data (str): The type of input data, either 'input' for scans or 'target' for masks.
+        dims (int): The number of dimensions for the data (2 or 3).
+        phase (str): The phase of the dataset, either 'train' or 'val'.
+        
+    Returns:
+        transform (T.Compose): The composed transform for the specified input type.
+    '''
+    assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D data is supported."
+    if dims == 3:
+        size = (64, 64, 64)
+    else:
+        size = (64, 64)
+    if data == 'target':
+        return T.Compose([
+            ToTensor(),
+            T.ToDtype(torch.int64, scale=False),  # Keep integer labels, no scaling
+            Resize(size=size, interpolation='nearest'),
+        ])
+    else:
+        interpolation = 'bilinear' if dims == 2 else 'trilinear'
+        return T.Compose([
+            ToTensor(),
+            T.ToDtype(torch.float32, scale=True),
+            Resize(size=size, interpolation=interpolation),
+            GaussianBlur(channels=3, dims=dims, kernel_size=5, sigma=0.1),
+            ClipAndScale(dims=dims, low_clip=1., high_clip=99., epsilon=1e-8)
+        ])
+
 
 def custom_collate_fn(batch):
     """

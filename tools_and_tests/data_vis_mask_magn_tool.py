@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from matplotlib.animation import FuncAnimation
 
-filename = 'Coarct_Aorta_Warp_7'
-scanMagn = np.load(f'data/train/magn/{filename}.npy')
-scanMask = np.load(f'data/train/mask/{filename}.npy')
+filename = 'Coarct_Aorta'
+scanMagn = np.load(f'data/val/magn/{filename}.npy')
+scanMask = np.load(f'data/val/mask/{filename}.npy')
 scan = {'Magnitude' : scanMagn, 'Mask' : scanMask}
 keys = ['Magnitude', 'Mask']
 numSlicesMagn = scanMagn.shape[0]
@@ -21,9 +21,16 @@ for i in range(2):
         pcm[i][j] = ax[i,j].pcolormesh(scan[keys[j]][0], cmap = 'viridis')
         pcm[i][j].set_clim(vmin = scan[keys[j]].min(), vmax = scan[keys[j]].max())
         title[i][j] = ax[i,j].set_title(f'{keys[j]} MRI Slice 0')
-fig.colorbar(pcm[1][1], ax = ax, shrink = 0.6)
+fig.colorbar(pcm[0][0], ax = ax[0, 0], shrink = 0.6)
+fig.colorbar(pcm[0][1], ax = ax[0, 1], shrink = 0.6)
+fig.colorbar(pcm[1][0], ax = ax[1, 0], shrink = 0.6)
+fig.colorbar(pcm[1][1], ax = ax[1, 1], shrink = 0.6)
 ax_slider = plt.axes([0.2, 0.05, 0.6, 0.03])
 slider = Slider(ax_slider, label = 'Slice', valmin = 0, valmax = min(numSlicesMagn, numSlicesMask) - 1, valinit = 0, valstep = 1)
+ax[0, 0].axis('off')
+ax[0, 1].axis('off')
+ax[1, 0].axis('off')
+ax[1, 1].axis('off')
 
 # Update function
 def updateSlide(val):

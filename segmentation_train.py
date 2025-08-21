@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
-from utils.segmentation_util import clip_and_scale, get_model_instance_segmentation, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
+from utils.segmentation_util import get_model_instance_segmentation, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
 
 '''Need to review using regularisation in loss instead of patience-based early stopping.'''
 
@@ -57,7 +57,7 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
                     optimizer.zero_grad()
 
                     # Move data to GPU
-                    scan = scan.to(device)      # (D * 3 * H * W)
+                    scan = scan.to(device)      # 2D (D * 3 * H * W) or 3D (3 * D * H * W)
                     mask3d = mask3d.to(device).long()  # (D * H * W)
 
                     # Process the 3D volume as a batch of 2D slices
@@ -66,10 +66,8 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
                     # Forward pass: Track history if in training phase
                     with torch.set_grad_enabled(phase == 'train'):
                         outputs = model(scan)
-                        pred_mask3d_logits = outputs['out']
-                        # If U-Net turns out to perform better, delete the above line and just use outputs.
-                        # In segmentation_util.py change the U_Net class to return just the tensor.
-                        pred_mask3d = torch.argmax(outputs['out'], dim = 1)
+                        pred_mask3d_logits = outputs
+                        pred_mask3d = torch.argmax(outputs, dim = 1)
                         loss = criterion(pred_mask3d_logits, mask3d)
 
                         if phase == 'train':
@@ -125,7 +123,7 @@ if __name__ == '__main__':
     # Augments are random changes, which are useful for training but not validation.
     transform = get_transform(data='input')
     target_transform = get_transform(data='target')
-    augment = T.Compose([
+    augment = T.Compose([ # Currently not in use
         T.GaussianNoise(mean = 0, sigma = 0.2),
         T.RandomHorizontalFlip(p = 0.5),
         T.RandomVerticalFlip(p = 0.5),
@@ -135,7 +133,7 @@ if __name__ == '__main__':
 
     # Set up datasets and dataloaders
     data_dir = 'data'
-    image_datasets = {x : MRIDataset(os.path.join(data_dir, x), x, transform, target_transform, augment) for x in ['train', 'val']}
+    image_datasets = {x : MRIDataset(os.path.join(data_dir, x), x , transform, target_transform, None) for x in ['train', 'val']}
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
     
     # Improved DataLoader configuration for better GPU utilization
@@ -148,7 +146,7 @@ if __name__ == '__main__':
         num_workers=num_workers, 
         persistent_workers=True if num_workers > 0 else False,
         pin_memory=torch.cuda.is_available(),  # Pin memory for faster GPU transfer
-        collate_fn=custom_collate_fn  # Handle variable-sized 3D volumes
+        collate_fn=custom_collate_fn  # Handle variable-sized 3D volumes - I don't think this is needed anymore.
     ) for x in ['train', 'val']}
     
     # Initialize model, loss, optimizer, and scheduler

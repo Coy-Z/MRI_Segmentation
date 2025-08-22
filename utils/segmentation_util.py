@@ -7,13 +7,13 @@ import torchvision
 from torchvision.transforms import v2 as T
 from torch.utils.data import Dataset
 from typing import Sequence
-from custom_transforms import ToTensor, Resize, GaussianBlur, ClipAndScale
+from .custom_transforms import ToTensor, Resize, GaussianBlur, ClipAndScale
 
 class MRIDataset(Dataset):
     '''
     A custom dataset class for processing .npy 3D MRI density scans.
     '''
-    def __init__(self, root : str, phase : str = 'val', dims : int = 2, transform : T.Compose = None,
+    def __init__(self, root : str, phase : str = 'val', dims : int = 3, transform : T.Compose = None,
                  target_transform : T.Compose = None, augment : T.Compose = None):
         '''
         Initialise the MRIDataset daughter class of torch.utils.data.Dataset.
@@ -60,16 +60,17 @@ class MRIDataset(Dataset):
         mask_path = os.path.join(self.root, "mask", self.masks[idx])
         
         # Load data
-        scan = self.grayscale_to_rgb(np.load(scan_path)) # (D * H * W * 3)
+        scan = np.load(scan_path) # (D * H * W)
         mask3d_raw = np.load(mask_path) # (D * H * W)
         
         if mask3d_raw.dtype == bool:
             mask3d_raw = mask3d_raw.astype(np.int64)  # False->0, True->1
         
+        scan = scan[..., np.newaxis]  # (D * H * W * 1)
         mask3d = mask3d_raw[..., np.newaxis] # (D * H * W * 1)
         # Apply transforms
         if self.transform:
-            scan = self.transform(scan) # 2D (D * 3 * H * W) or 3D (3 * D * H * W)
+            scan = self.transform(scan) # (D * H * W)
         if self.target_transform:
             mask3d = self.target_transform(mask3d) # (D * 1 * H * W) or 3D (1 * D * H * W)
 
@@ -119,8 +120,9 @@ class MRIDataset(Dataset):
         
         return scan_rgb
 
-class FCNWrapper(torch.nn.Module):
+class _FCNWrapper(torch.nn.Module):
     '''
+    DEPRECATED
     This class is purely to adjust the FCN_ResNets to output the tensor, instead of a dictionary.
     '''
     def __init__(self, fcn_model):
@@ -385,44 +387,25 @@ def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
         return 1.0 if intersection == 0 else 0.0
     return float(intersection) / union
 
-def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', architecture : str = 'unet', trained : bool = False) -> torchvision.models.segmentation.fcn.FCN:
+def get_model_instance_unet(num_classes : int, dims : int = 3, device : str = 'cpu', trained : bool = False) -> torchvision.models.segmentation.fcn.FCN:
     '''
     Load an instance of the model of choice, with pre-trained weights.
 
     Args:
         num_classes (int): The number of output classes. Here, we use two -> 0. Background | 1. Blood vessel
+        dims (int): The number of dimensions for the input data (2 or 3).
         device (str): The device to run the model on ('cpu' or 'cuda').
-        architecture (str): The model architecture to use ('fcn_resnet50', 'fcn_resnet101' or 'unet').
         trained (bool): A boolean depicting whether the model has been locally trained or not, i.e. whether to load fine-tuned or default weights.
 
     Returns:
         model (torchvision.models.segmentation.fcn_resnet101): The model with required weights.
     '''
-    # Load the instance segmentation model pre=trained on COCO
-    if architecture == 'fcn_resnet101':
-        model = torchvision.models.segmentation.fcn_resnet101(weights = "COCO_WITH_VOC_LABELS_V1")
-        # Replace the classifier with a new one, that has a user defined num_classes
-        # Get the number of input features for the final layer of the ResNet
-        inter_channels = model.classifier[4].in_channels
-        # Replace the final convolutional layer with a new one
-        model.classifier[4] = nn.Conv2d(inter_channels, num_classes, kernel_size = 1)
-        model = FCNWrapper(model)
-    elif architecture == 'fcn_resnet50':
-        model = torchvision.models.segmentation.fcn_resnet50(weights = "COCO_WITH_VOC_LABELS_V1")
-        # Replace the classifier with a new one, that has a user defined num_classes
-        # Get the number of input features for the final layer of the ResNet
-        inter_channels = model.classifier[4].in_channels
-        # Replace the final convolutional layer with a new one
-        model.classifier[4] = nn.Conv2d(inter_channels, num_classes, kernel_size = 1)
-        model = FCNWrapper(model)
-    elif architecture == 'unet':
-        model = U_Net(dims=3, num_classes=num_classes)  # Default to 2D U-Net
-    else:
-        raise ValueError(f"Unknown architecture: {architecture}")
-
-    if trained: # If the model has been locally trained, load the fine-tuned weights
-        model.load_state_dict(torch.load(f'{architecture}_model_params.pth', weights_only = True))
-
+    assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D scans are supported."
+    # Load the U-Net
+    model = U_Net(dims=dims, num_classes=num_classes)
+    # If the model has been locally trained, load the fine-tuned weights
+    if trained:
+        model.load_state_dict(torch.load(f'unet_model_params.pth', weights_only = True))
     return model.to(device) # Move the model to the specified device
 
 def _get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
@@ -485,8 +468,9 @@ def get_transform(data : str = 'target', dims : int = 3, phase : str = 'train') 
     if data == 'target':
         return T.Compose([
             ToTensor(),
-            T.ToDtype(torch.int64, scale=False),  # Keep integer labels, no scaling
+            T.ToDtype(torch.float32, scale=False),  # Keep integer labels, no scaling
             Resize(size=size, interpolation='nearest'),
+            T.ToDtype(torch.int64, scale=False),
         ])
     else:
         interpolation = 'bilinear' if dims == 2 else 'trilinear'

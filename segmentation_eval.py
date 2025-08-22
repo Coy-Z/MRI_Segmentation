@@ -4,7 +4,7 @@ import numpy as np
 import scipy
 import torch
 from torchvision.transforms import v2 as T
-from utils.segmentation_util import clip_and_scale, get_model_instance_segmentation, grayscale_to_rgb, get_transform
+from utils.segmentation_util import clip_and_scale, get_model_instance_unet, grayscale_to_rgb, get_transform
 
 val_transform = T.Compose([
     T.ToImage(),
@@ -36,7 +36,7 @@ def evaluation(model, scan, device):
 # Device and model setup
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 architecture = 'unet'
-model = get_model_instance_segmentation(num_classes = 2, device = device, architecture = architecture, trained = True)
+model = get_model_instance_unet(num_classes = 2, dims = 3, device = device, trained = True)
 
 # Load data: Optionally apply Gaussian smoothing
 #images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)

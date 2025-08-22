@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
-from utils.segmentation_util import get_model_instance_segmentation, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
+from utils.segmentation_util import get_model_instance_unet, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
 
 '''Need to review using regularisation in loss instead of patience-based early stopping.'''
 
@@ -112,6 +112,10 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
     return model
 
 if __name__ == '__main__':
+    # Specify model to use and dimensionality of data
+    architecture = 'unet'
+    dims = 3
+
     # Select device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using {device} device.')
@@ -133,7 +137,7 @@ if __name__ == '__main__':
 
     # Set up datasets and dataloaders
     data_dir = 'data'
-    image_datasets = {x : MRIDataset(os.path.join(data_dir, x), x , transform, target_transform, None) for x in ['train', 'val']}
+    image_datasets = {x : MRIDataset(os.path.join(data_dir, x), x, dims, transform, target_transform, None) for x in ['train', 'val']}
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
     
     # Improved DataLoader configuration for better GPU utilization
@@ -150,8 +154,7 @@ if __name__ == '__main__':
     ) for x in ['train', 'val']}
     
     # Initialize model, loss, optimizer, and scheduler
-    architecture = 'unet'
-    model = get_model_instance_segmentation(num_classes = 2, device = device, architecture=architecture, trained = False)
+    model = get_model_instance_unet(num_classes = 2, dims = 3, device = device, trained = False)
     criterion = Combined_Loss(device, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights=(0.1, 0.9))
     
     # Use AdamW with weight decay for L2 regularization

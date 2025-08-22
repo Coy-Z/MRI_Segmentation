@@ -41,14 +41,12 @@ class ToTensor(Transform):
     def forward(self, array : np.ndarray) -> torch.Tensor:
         '''
         Args:
-            array (np.ndarray): Input numpy array of shape (..., C).
+            array (np.ndarray): Input numpy array.
 
         Returns:
-            torch.Tensor: Output PyTorch tensor of shape (C, D, H, W) or (N, C, H, W).
+            torch.Tensor: Output PyTorch tensor.
         '''
-        if self.dims == 3:
-            return torch.from_numpy(array).permute(3, 0, 1, 2)
-        return torch.from_numpy(array).permute(0, 3, 1, 2)
+        return torch.from_numpy(array)
 
 class Resize(Transform):
     '''
@@ -72,65 +70,53 @@ class Resize(Transform):
     def forward(self, tensor : torch.Tensor) -> torch.Tensor:
         '''
         Args:
-            tensor (torch.Tensor): The input tensor to resize of shape (C, D, H, W) or (N, C, H, W)
+            tensor (torch.Tensor): The input tensor to resize of shape (D, H, W) or (N, H, W)
 
         Returns:
-            torch.Tensor: The resized tensor (C, self.size) or (N, C, self.size)
+            torch.Tensor: The resized tensor 2D (N, self.size) or 3D (self.size)
         '''
         if self.dims == 2:
-            result = nn.functional.interpolate(tensor, size=self.size, mode=self.interpolation, align_corners=False)
+            result = nn.functional.interpolate(tensor.unsqueeze(0), size=self.size, mode=self.interpolation).squeeze(0)
         elif self.dims == 3:
-            # For 3D tensors, we need to specify the mode as 'trilinear' or 'nearest'
-            result = nn.functional.interpolate(tensor.unsqueeze(0), size=self.size, mode=self.interpolation, align_corners=False).squeeze(0)
+            result = nn.functional.interpolate(tensor.unsqueeze(0).unsqueeze(0), size=self.size, mode=self.interpolation).squeeze(0).squeeze(0)
         else:
             raise ValueError("Unsupported tensor dimensions. Only 2D and 3D tensors are supported.")
         return result
 
-def gaussian_kernel_2d(kernel_size: int, sigma: float, channels: int):
+def gaussian_kernel_2d(kernel_size: int, sigma: float):
     """Creates a 2D Gaussian kernel."""
     # coordinate grid
     ax = torch.arange(kernel_size) - kernel_size // 2
     xx, yy = torch.meshgrid(ax, ax, indexing='ij')
     kernel = torch.exp(-(xx**2 + yy**2) / (2 * sigma**2))
     kernel = kernel / kernel.sum()  # normalize
-
-    # shape (out_channels, in_channels, D, H, W)
-    kernel = kernel.expand(channels, 1, *kernel.shape)
     return kernel
 
-def gaussian_kernel_3d(kernel_size: int, sigma: float, channels: int):
+def gaussian_kernel_3d(kernel_size: int, sigma: float):
     """Creates a 3D Gaussian kernel."""
     # coordinate grid
     ax = torch.arange(kernel_size) - kernel_size // 2
     xx, yy, zz = torch.meshgrid(ax, ax, ax, indexing='ij')
     kernel = torch.exp(-(xx**2 + yy**2 + zz**2) / (2 * sigma**2))
     kernel = kernel / kernel.sum()  # normalize
-
-    # shape (out_channels, in_channels, D, H, W)
-    kernel = kernel.expand(channels, 1, *kernel.shape)
     return kernel
 
 class GaussianBlur(Transform):
     '''
     Custom transform for applying Gaussian blur to PyTorch tensors.
     '''
-    def __init__(self, channels : int = 3, dims : int = 3, kernel_size : int = 5, sigma : float = 0.1):
+    def __init__(self, dims : int = 3, kernel_size : int = 5, sigma : float = 0.1):
+        assert dims in [2, 3], 'Invalid dimensions. Only 2D and 3D are supported.'
         super().__init__()
         self.dims = dims
         if dims == 2:
-            kernel = gaussian_kernel_2d(kernel_size, sigma, channels)
-            self.conv = nn.Conv2d(
-                in_channels=channels, out_channels=channels,
-                kernel_size=kernel_size, padding=kernel_size//2,
-                groups=channels, bias=False
-            )
+            kernel = gaussian_kernel_2d(kernel_size, sigma)
+            self.conv = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=kernel_size,
+                                  padding=kernel_size//2, groups=1, bias=False)
         elif dims == 3:
-            kernel = gaussian_kernel_3d(kernel_size, sigma, channels)
-            self.conv = nn.Conv3d(
-                in_channels=channels, out_channels=channels,
-                kernel_size=kernel_size, padding=kernel_size//2,
-                groups=channels, bias=False
-            )
+            kernel = gaussian_kernel_3d(kernel_size, sigma)
+            self.conv = nn.Conv3d(in_channels=1, out_channels=1, kernel_size=kernel_size,
+                                  padding=kernel_size//2, groups=1, bias=False)
         else:
             raise ValueError("Unsupported dimensions. Only 2D and 3D are supported.")
         
@@ -140,16 +126,12 @@ class GaussianBlur(Transform):
     def forward(self, tensor : torch.Tensor) -> torch.Tensor:
         '''
         Args:
-            tensor (torch.Tensor): Input tensor 3D (C, D, H, W) or 2D (N, C, H, W).
+            tensor (torch.Tensor): Input tensor 2D (N, H, W) or 3D (D, H, W)
 
         Returns:
-            torch.Tensor: Blurred tensor 3D (C, D, H, W) or 2D (N, C, H, W)
+            torch.Tensor: Blurred tensor 2D (N, H, W) or 3D (D, H, W)
         '''
-        if self.dims == 3:
-            tensor = tensor.unsqueeze(0)
-            return self.conv(tensor).squeeze(0)
-        else:
-            return self.conv(tensor)
+        return self.conv(tensor.unsqueeze(0)).squeeze(0)
         
 def clip_and_scale(tensor : torch.Tensor, low_clip : float = 1., high_clip : float = 99., epsilon : float = 1e-6) -> torch.Tensor:
     '''
@@ -203,17 +185,3 @@ class ClipAndScale(Transform):
             return tensor
         else:
             return clip_and_scale(tensor, self.low_clip, self.high_clip, self.epsilon)
-
-array = np.ones((60, 61, 62, 3)) # (D * H * W * C)
-
-transform = T.Compose([
-    ToTensor(),
-    T.ToDtype(torch.float32, scale=True),
-    Resize(size=(64, 64, 64), interpolation='trilinear'),
-    T.GaussianBlur(kernel_size = 5, sigma = 0.1),
-])
-
-tensor = transform(array)
-
-print(tensor.unsqueeze(0).shape)  # Should print torch.Size([1, 3, 64, 64, 64])
-

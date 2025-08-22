@@ -3,32 +3,6 @@ import torch.nn as nn
 from torchvision.transforms import v2 as T
 from torchvision.transforms.v2 import Transform
 import numpy as np
-import matplotlib.pyplot as plt
-
-def grayscale_to_rgb(scan : np.ndarray[float], cmap : str = 'inferno') -> np.ndarray[float]:
-    '''
-    Colours a greyscale intensity plot.
-
-    Args:
-        scan (np.ndarray): Input greyscale scan array (D * H * W).
-        cmap (string): Choice of colormap, out of the matplotlib strings - grey, bone, viridis, plasma, inferno etc...
-
-    Returns:
-        scan (np.ndarray): Output RGB scan array (D * H * W * 3).
-    '''
-    # Normalize to [0, 1] range first
-    scan_norm = (scan - scan.min()) / (scan.max() - scan.min() + 1e-8)
-
-    if cmap == 'inferno' or cmap == 'viridis':
-        # Simple fast approximation - can be replaced with lookup table for production
-        scan_rgb = np.stack([scan_norm, scan_norm, scan_norm], axis=-1) * 255
-    else:
-        # Fallback to matplotlib for other colormaps
-        cmap_func = plt.get_cmap(cmap)
-        scan_rgb = cmap_func(scan_norm) * 255 # (D * H * W * 4)
-        scan_rgb = scan_rgb[..., :3]  # Remove alpha channel (D * H * W * 3)
-    
-    return scan_rgb
 
 class ToTensor(Transform):
     '''

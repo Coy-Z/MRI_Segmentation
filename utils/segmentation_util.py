@@ -53,82 +53,36 @@ class MRIDataset(Dataset):
             idx (int): The index of the scan we wish to retrieve from the dataset.
         
         Returns:
-            scan (torch.Tensor): The pre-processed RGB scan Float32 tensor (D * 3 * H * W).
-            mask3d (torch.Tensor): The pre-processed binary mask Int64 tensor (D * H * W).
+            scan (torch.Tensor): The pre-processed RGB scan Float32 tensor (D * H * W).
+            mask (torch.Tensor): The pre-processed binary mask Int64 tensor (D * H * W).
         '''
         scan_path = os.path.join(self.root, "magn", self.scans[idx])
         mask_path = os.path.join(self.root, "mask", self.masks[idx])
         
         # Load data
-        scan = self.grayscale_to_rgb(np.load(scan_path)) # (D * H * W * 3)
-        mask3d_raw = np.load(mask_path) # (D * H * W)
+        scan = np.load(scan_path) # (D * H * W)
+        mask = np.load(mask_path) # (D * H * W)
         
-        if mask3d_raw.dtype == bool:
-            mask3d_raw = mask3d_raw.astype(np.int64)  # False->0, True->1
+        if mask.dtype == bool:
+            mask = mask.astype(np.int64)  # False->0, True->1
         
-        mask3d = mask3d_raw[..., np.newaxis] # (D * H * W * 1)
         # Apply transforms
         if self.transform:
-            scan = self.transform(scan) # 2D (D * 3 * H * W) or 3D (3 * D * H * W)
+            scan = self.transform(scan) # (D * H * W)
         if self.target_transform:
-            mask3d = self.target_transform(mask3d) # (D * 1 * H * W) or 3D (1 * D * H * W)
+            mask = self.target_transform(mask) # (D * H * W)
 
-        # Apply transforms
-        if self.dims == 2:
-            if self.augment and self.phase == 'train':
-                data = torch.cat([scan, mask3d], 1) # (D * 4 * H * W)
-                data = self.augment(data)
+        if self.augment is None or self.phase == 'val':
+            return scan, mask
 
-                scan = data[:, :3, :, :] # (D * 3 * H * W)
-                mask3d = data[:, 3:, :, :] # (D * 1 * H * W)
-                return scan, mask3d.squeeze(1)
-        else:
-            if self.augment and self.phase == 'train':
-                data = torch.cat([scan, mask3d], 0) # (4 * D * H * W)
-                data = self.augment(data)
-
-                scan = data[:3, :, :, :] # (3 * D * H * W)
-                mask3d = data[:1, :, :, :] # (1 * D * H * W)
-                return scan, mask3d.squeeze(0)
+        data = torch.cat([scan.unsqueeze(0), mask.unsqueeze(0)], 0) # (2 * D * H * W)
+        data = self.augment(data) # Need to ensure augment knows whether to work on 2D or 3D data.
+        scan = data[0, :, :, :] # (1 * D * H * W)
+        mask = data[1, :, :, :] # (1 * D * H * W)
+        return scan, mask
     
     #def __getitems__(self, idxs : list[int]) -> list[tuple[torch.Tensor, torch.Tensor]]:
         return
-
-    def grayscale_to_rgb(self, scan : np.ndarray[float], cmap : str = 'grey') -> np.ndarray[float]:
-        '''
-        Colours a greyscale intensity plot.
-
-        Args:
-            scan (np.ndarray): Input greyscale scan array (D * H * W).
-            cmap (string): Choice of colormap, out of the matplotlib strings - grey, bone, viridis, plasma, inferno etc...
-        
-        Returns:
-            scan (np.ndarray): Output RGB scan array (D * H * W * 3).
-        '''
-        # Normalize to [0, 1] range first
-        scan_norm = (scan - scan.min()) / (scan.max() - scan.min() + 1e-8)
-
-        if cmap == 'grey':
-            # Simple fast approximation - can be replaced with lookup table for production
-            scan_rgb = np.stack([scan_norm, scan_norm, scan_norm], axis=-1) * 255
-        else:
-            # Fallback to matplotlib for other colormaps
-            cmap_func = plt.get_cmap(cmap)
-            scan_rgb = cmap_func(scan_norm) * 255 # (D * H * W * 4)
-            scan_rgb = scan_rgb[..., :3]  # Remove alpha channel (D * H * W * 3)
-        
-        return scan_rgb
-
-class FCNWrapper(torch.nn.Module):
-    '''
-    This class is purely to adjust the FCN_ResNets to output the tensor, instead of a dictionary.
-    '''
-    def __init__(self, fcn_model):
-        super().__init__()
-        self.fcn_model = fcn_model
-    
-    def forward(self, x):
-        return self.fcn_model(x)['out']
 
 class U_Net_Skip_Block(nn.Module):
     '''
@@ -230,7 +184,7 @@ class U_Net(nn.Module):
         self.level_3 = U_Net_Skip_Block(dims, self.level_4, 256, 512)
         self.level_2 = U_Net_Skip_Block(dims, self.level_3, 128, 256)
         self.level_1 = U_Net_Skip_Block(dims, self.level_2, 64, 128)
-        self.level_0 = U_Net_Skip_Block(dims, self.level_1, 3, 64)
+        self.level_0 = U_Net_Skip_Block(dims, self.level_1, 1, 64)
         if dims == 3:
             self.network = nn.Sequential(
                 self.level_0,
@@ -246,14 +200,15 @@ class U_Net(nn.Module):
         '''
         Forward pass of the model.
         Args:
-            input (torch.Tensor): Input tensor of shape (B, 1, D*, H, W).
+            input (torch.Tensor): Input tensor of shape (B*, 1, D**, H, W).
         
         Returns:
-            torch.Tensor: Output tensor of shape (B, 1, D*, H, W).
-
-        * D is only present in 3D case.
+            torch.Tensor: Output tensor of shape (B*, 1, D**, H, W).
+        
+        * B is optional.
+        ** D is only present in 3D case.
         '''
-        return {"out": self.network(input)}
+        return self.network(input)
 
 
 class Combined_Loss(nn.Module):
@@ -385,7 +340,7 @@ def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
         return 1.0 if intersection == 0 else 0.0
     return float(intersection) / union
 
-def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', architecture : str = 'unet', trained : bool = False) -> torchvision.models.segmentation.fcn.FCN:
+def get_model_instance_unet(num_classes : int, device : str = 'cpu', dims : int = 3, trained : bool = False) -> torchvision.models.segmentation.fcn.FCN:
     '''
     Load an instance of the model of choice, with pre-trained weights.
 
@@ -398,30 +353,10 @@ def get_model_instance_segmentation(num_classes : int, device : str = 'cpu', arc
     Returns:
         model (torchvision.models.segmentation.fcn_resnet101): The model with required weights.
     '''
-    # Load the instance segmentation model pre=trained on COCO
-    if architecture == 'fcn_resnet101':
-        model = torchvision.models.segmentation.fcn_resnet101(weights = "COCO_WITH_VOC_LABELS_V1")
-        # Replace the classifier with a new one, that has a user defined num_classes
-        # Get the number of input features for the final layer of the ResNet
-        inter_channels = model.classifier[4].in_channels
-        # Replace the final convolutional layer with a new one
-        model.classifier[4] = nn.Conv2d(inter_channels, num_classes, kernel_size = 1)
-        model = FCNWrapper(model)
-    elif architecture == 'fcn_resnet50':
-        model = torchvision.models.segmentation.fcn_resnet50(weights = "COCO_WITH_VOC_LABELS_V1")
-        # Replace the classifier with a new one, that has a user defined num_classes
-        # Get the number of input features for the final layer of the ResNet
-        inter_channels = model.classifier[4].in_channels
-        # Replace the final convolutional layer with a new one
-        model.classifier[4] = nn.Conv2d(inter_channels, num_classes, kernel_size = 1)
-        model = FCNWrapper(model)
-    elif architecture == 'unet':
-        model = U_Net(dims=3, num_classes=num_classes)  # Default to 2D U-Net
-    else:
-        raise ValueError(f"Unknown architecture: {architecture}")
+    model = U_Net(dims=dims, num_classes=num_classes)
 
     if trained: # If the model has been locally trained, load the fine-tuned weights
-        model.load_state_dict(torch.load(f'{architecture}_model_params.pth', weights_only = True))
+        model.load_state_dict(torch.load(f'{dims}D_model_params.pth', weights_only = True))
 
     return model.to(device) # Move the model to the specified device
 
@@ -485,19 +420,19 @@ def get_transform(data : str = 'target', dims : int = 3, phase : str = 'train') 
     if data == 'target':
         return T.Compose([
             ToTensor(),
-            T.ToDtype(torch.int64, scale=False),  # Keep integer labels, no scaling
+            T.ToDtype(torch.float32, scale=False),
             Resize(size=size, interpolation='nearest'),
+            T.ToDtype(torch.int64, scale=False)  # Convert to int64 after resizing
         ])
     else:
         interpolation = 'bilinear' if dims == 2 else 'trilinear'
         return T.Compose([
             ToTensor(),
             T.ToDtype(torch.float32, scale=True),
-            Resize(size=size, interpolation=interpolation),
-            GaussianBlur(channels=3, dims=dims, kernel_size=5, sigma=0.1),
+            GaussianBlur(dims=dims, kernel_size=5, sigma=0.1),
+            Resize(dims=dims, size=size, interpolation=interpolation),
             ClipAndScale(dims=dims, low_clip=1., high_clip=99., epsilon=1e-8)
         ])
-
 
 def custom_collate_fn(batch):
     """

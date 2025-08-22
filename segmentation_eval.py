@@ -1,16 +1,16 @@
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import numpy as np
-import scipy
 import torch
 from torchvision.transforms import v2 as T
-from utils.segmentation_util import clip_and_scale, get_model_instance_segmentation, grayscale_to_rgb, get_transform
+from utils.custom_transforms import ToTensor, Resize, ClipAndScale
+from utils.segmentation_util import get_model_instance_unet, get_transform
 
 val_transform = T.Compose([
-    T.ToImage(),
+    ToTensor(),
     T.ToDtype(torch.float32, scale=True),
-    T.Resize(size=(64, 64), interpolation=T.InterpolationMode.BILINEAR),
-    T.Lambda(clip_and_scale)
+    Resize(size=(64, 64), interpolation='bilinear'),
+    ClipAndScale()
 ])
 
 def evaluation(model, scan, device):
@@ -26,20 +26,18 @@ def evaluation(model, scan, device):
     if model.training:
         model.eval()
     with torch.inference_mode():
-        slices = grayscale_to_rgb(scan)
-        inputs = torch.stack([val_transform(slice) for slice in slices]).to(device)
+        inputs = val_transform(scan).to(device)  # (D * 1 * H * W)
         outputs = model(inputs)
-        preds = torch.argmax(outputs['out'], dim = 1)
+        preds = torch.argmax(outputs, dim = 1)
     masks = preds.squeeze().cpu()
     return masks
 
 # Device and model setup
+dims = 3
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-architecture = 'unet'
-model = get_model_instance_segmentation(num_classes = 2, device = device, architecture = architecture, trained = True)
+model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = True)
 
 # Load data: Optionally apply Gaussian smoothing
-#images = scipy.ndimage.gaussian_filter(np.load('data/magn/Aorta.npy'), sigma = 2)
 target = 'Carotid'
 images = np.load(f'data/val/magn/{target}.npy')
 
@@ -66,8 +64,8 @@ ani = FuncAnimation(fig, updateAnim, frames = images.shape[0], interval = 100, b
 
 # Save animation as GIF to prevent the warning and ensure it's properly rendered
 print("Saving animation as GIF...")
-ani.save(f'images/{architecture}_{target}.gif', writer='pillow', fps=10)
-print(f"Animation saved as {architecture}_{target}.gif")
+ani.save(f'images/{dims}D_{target}.gif', writer='pillow', fps=10)
+print(f"Animation saved as {dims}D_{target}.gif")
 
 # Optionally show the plot if display is available
 try:

@@ -5,17 +5,18 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
-from utils.segmentation_util import get_model_instance_segmentation, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
+from utils.segmentation_util import get_model_instance_unet, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
 
 '''Need to review using regularisation in loss instead of patience-based early stopping.'''
 
-def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs, patience=15):
+def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs, patience=15):
     """
     Trains the model and returns the best model based on validation IoU.
 
     Args:
         model: The segmentation model to train.
         device: Device to use ('cuda' or 'cpu').
+        dims: Dimensions of the input images.
         criterion: Loss function.
         optimizer: Optimizer.
         dataloaders: Dict of DataLoader objects for 'train' and 'val'.
@@ -52,23 +53,22 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
                 acc_IoU = 0.0
 
                 # Iterate over data
-                for scan, mask3d in dataloaders[phase]:
+                for scan, mask in dataloaders[phase]:
                     # Zero the parameter gradients
                     optimizer.zero_grad()
 
                     # Move data to GPU
-                    scan = scan.to(device)      # 2D (D * 3 * H * W) or 3D (3 * D * H * W)
-                    mask3d = mask3d.to(device).long()  # (D * H * W)
+                    scan = scan.to(device)      # (D * H * W)
+                    mask = mask.to(device).long()  # (D * H * W)
+                    scan = scan.unsqueeze(3 - dims)  # 2D (D * 1 * H * W) or 3D (1 * D * H * W)
+                    mask = mask.unsqueeze(3 - dims)  # 2D (D * 1 * H * W) or 3D (1 * D * H * W)
 
-                    # Process the 3D volume as a batch of 2D slices
-                    # The scans are already in the right format -> this allows us to process all slices in parallel
-
+                    # No need to code differently for 2D or 3D, since the convolutional layers handle both cases.
                     # Forward pass: Track history if in training phase
                     with torch.set_grad_enabled(phase == 'train'):
-                        outputs = model(scan)
-                        pred_mask3d_logits = outputs
-                        pred_mask3d = torch.argmax(outputs, dim = 1)
-                        loss = criterion(pred_mask3d_logits, mask3d)
+                        pred_mask_logits = model(scan)
+                        pred_mask = torch.argmax(pred_mask_logits, dim=1)
+                        loss = criterion(pred_mask_logits, mask)
 
                         if phase == 'train':
                             loss.backward()
@@ -79,7 +79,7 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
                     # Accumulate Statistics
                     running_loss += loss.item() * scan.size(0) # Ensure the criterion reduction parameter is 'mean'
 
-                    acc_IoU += sum_IoU(pred_mask3d, mask3d)
+                    acc_IoU += sum_IoU(pred_mask, mask)
                 
                 epoch_loss = running_loss / dataset_sizes[phase]
                 epoch_IoU = acc_IoU / dataset_sizes[phase]
@@ -112,7 +112,8 @@ def train(model, device, criterion, optimizer, dataloaders, scheduler, dataset_s
     return model
 
 if __name__ == '__main__':
-    # Select device
+    # Select dimensions and device
+    dims = 2
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using {device} device.')
     if torch.cuda.is_available():
@@ -133,25 +134,24 @@ if __name__ == '__main__':
 
     # Set up datasets and dataloaders
     data_dir = 'data'
-    image_datasets = {x : MRIDataset(os.path.join(data_dir, x), x , transform, target_transform, None) for x in ['train', 'val']}
+    image_datasets = {x : MRIDataset(root = os.path.join(data_dir, x), phase = x,
+                                     dims = dims, transform = transform,
+                                     target_transform = target_transform,
+                                     augment = None) for x in ['train', 'val']}
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
     
-    # Improved DataLoader configuration for better GPU utilization
-    num_workers = min(4, os.cpu_count())  # Use multiple workers for async data loading
+    # Set up DataLoader
+    num_workers = min(4, os.cpu_count())
     batch_size = 1  # Keep batch_size = 1 due to variable scan sizes and small validation set
-    dataloaders = {x: DataLoader(
-        image_datasets[x], 
-        batch_size=batch_size, 
-        shuffle=True, 
-        num_workers=num_workers, 
-        persistent_workers=True if num_workers > 0 else False,
-        pin_memory=torch.cuda.is_available(),  # Pin memory for faster GPU transfer
-        collate_fn=custom_collate_fn  # Handle variable-sized 3D volumes - I don't think this is needed anymore.
-    ) for x in ['train', 'val']}
+    dataloaders = {x: DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True,
+                                 num_workers=num_workers, persistent_workers=True if num_workers > 0 else False,
+                                 pin_memory=torch.cuda.is_available(),  # Pin memory for faster GPU transfer
+                                 collate_fn=custom_collate_fn  # Additional redundancy in case batch_size > 1.
+                                 ) for x in ['train', 'val']}
     
     # Initialize model, loss, optimizer, and scheduler
     architecture = 'unet'
-    model = get_model_instance_segmentation(num_classes = 2, device = device, architecture=architecture, trained = False)
+    model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = False)
     criterion = Combined_Loss(device, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights=(0.1, 0.9))
     
     # Use AdamW with weight decay for L2 regularization
@@ -166,8 +166,8 @@ if __name__ == '__main__':
     print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     
     # Train the model
-    model = train(model, device, criterion, optimizer, dataloaders, lr_scheduler, dataset_sizes, 
+    model = train(model, device, dims, criterion, optimizer, dataloaders, lr_scheduler, dataset_sizes, 
                   num_epochs=100, patience=20)
 
     # Save the model parameters
-    torch.save(model.state_dict(), f'{architecture}_model_params.pth')
+    torch.save(model.state_dict(), f'{dims}D_model_params.pth')

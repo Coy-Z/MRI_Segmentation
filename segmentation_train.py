@@ -122,8 +122,8 @@ if __name__ == '__main__':
 
     # Define transforms.
     # Augments are random changes, which are useful for training but not validation.
-    transform = get_transform(data='input')
-    target_transform = get_transform(data='target')
+    transform = get_transform(data='input', dims=dims)
+    target_transform = get_transform(data='target', dims=dims)
     augment = T.Compose([ # Currently not in use
         T.GaussianNoise(mean = 0, sigma = 0.2),
         T.RandomHorizontalFlip(p = 0.5),
@@ -150,7 +150,6 @@ if __name__ == '__main__':
                                  ) for x in ['train', 'val']}
     
     # Initialize model, loss, optimizer, and scheduler
-    architecture = 'unet'
     model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = False)
     criterion = Combined_Loss(device, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights=(0.1, 0.9))
     

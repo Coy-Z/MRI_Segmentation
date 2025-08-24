@@ -67,7 +67,10 @@ def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dat
                     # Forward pass: Track history if in training phase
                     with torch.set_grad_enabled(phase == 'train'):
                         pred_mask_logits = model(scan)
-                        pred_mask = torch.argmax(pred_mask_logits, dim=1)
+                        print(pred_mask_logits.shape)
+                        pred_mask = torch.argmax(pred_mask_logits, dim=3 - dims)
+                        print(pred_mask.shape)
+                        print(mask.shape)
                         loss = criterion(pred_mask_logits, mask)
 
                         if phase == 'train':
@@ -113,7 +116,7 @@ def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dat
 
 if __name__ == '__main__':
     # Select dimensions and device
-    dims = 2
+    dims = 3
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using {device} device.')
     if torch.cuda.is_available():

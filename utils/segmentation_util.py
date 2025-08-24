@@ -6,7 +6,7 @@ import torchvision
 from torchvision.transforms import v2 as T
 from torch.utils.data import Dataset
 from typing import Sequence
-from custom_transforms import ToTensor, Resize, GaussianBlur, ClipAndScale
+from utils.custom_transforms import ToTensor, Resize, GaussianBlur, ClipAndScale
 
 class MRIDataset(Dataset):
     '''
@@ -83,9 +83,12 @@ class MRIDataset(Dataset):
     #def __getitems__(self, idxs : list[int]) -> list[tuple[torch.Tensor, torch.Tensor]]:
         return
 
-class U_Net_Skip_Block(nn.Module):
+class U_Net_Skip_Block(nn.Module): # Incomplete, need a crop in the skip block for robustness.
     '''
     Skip Connections for the U-Net model.
+
+    N.B. The U-Net architecture at present requires sizes to be powers of 2, to account for correct upsampling.
+         This can be tackled by introducing a crop in the skip block.
     '''
     def __init__(self, dims : int, block : nn.Module, in_channels : int, out_channels : int):
         '''
@@ -101,6 +104,7 @@ class U_Net_Skip_Block(nn.Module):
         '''
         assert dims in [2, 3], "Invalid spatial dimensions"
         super().__init__()
+        self.dims = dims
         self.relu = nn.ReLU(inplace=True)
         if dims == 3:
             # Conv 3x3 modules
@@ -119,33 +123,37 @@ class U_Net_Skip_Block(nn.Module):
             self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
             self.deconv = nn.ConvTranspose2d(2 * out_channels, out_channels, kernel_size=2, stride=2)
         # Block that is to be skipped over
-        self.block = block
-        
+        self.block = block        
 
     def forward(self, input : torch.Tensor) -> torch.Tensor:
         '''
         Forward pass of the skip block.
         Args:
-            input (torch.Tensor): Input tensor of shape (B, in_channels, D*, H, W).
+            input (torch.Tensor): Input tensor of shape 2D (B*, D, in_channels, H, W) or 3D (B*, in_channels, D, H, W).
 
         Returns:
-            torch.Tensor: Output tensor of shape (B, out_channels, D*, H, W).
+            torch.Tensor: Output tensor of shape 2D (B*, D, out_channels, H, W) or 3D (B*, out_channels, D, H, W).
 
-        * D is only present in 3D case.
+        * B is optional.
+        ** D is depth in 3D case and slice/frame in 2D case.
         '''
-        # Level 0
+        # Level n
+        print(input.shape)
         x1 = self.conv1(input)
+        print(x1.shape)
         x1 = self.relu(x1)
         x1 = self.conv2(x1)
         x1 = self.relu(x1)
         x2 = self.maxpool(x1)
+        print(x2.shape)
 
-        # Level 1
+        # Level n + 1
         x2 = self.block(x2)
         x2 = self.deconv(x2)
 
-        # Level 0
-        x3 = torch.cat([x1, x2], dim=1)  # Concatenate along channel dimension
+        # Level n
+        x3 = torch.cat([x1, x2], dim=-(self.dims + 1))  # Concatenate along channel dimension
+        print(x3.shape)
         x3 = self.conv3(x3)
         x3 = self.relu(x3)
         x3 = self.conv2(x3)
@@ -420,7 +428,7 @@ def get_transform(data : str = 'target', dims : int = 3, phase : str = 'train') 
         return T.Compose([
             ToTensor(),
             T.ToDtype(torch.float32, scale=False),
-            Resize(size=size, interpolation='nearest'),
+            Resize(dims=dims, size=size, interpolation='nearest'),
             T.ToDtype(torch.int64, scale=False)  # Convert to int64 after resizing
         ])
     else:

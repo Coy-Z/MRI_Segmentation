@@ -66,13 +66,14 @@ def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dat
                     # No need to code differently for 2D or 3D, since the convolutional layers handle both cases.
                     # Forward pass: Track history if in training phase
                     with torch.set_grad_enabled(phase == 'train'):
-                        pred_mask_logits = model(scan)
-                        print(pred_mask_logits.shape)
-                        pred_mask = torch.argmax(pred_mask_logits, dim=3 - dims)
-                        print(pred_mask.shape)
-                        print(mask.shape)
-                        loss = criterion(pred_mask_logits, mask)
+                        pred_mask_logits = model(scan) # 2D (D * num_classes * H * W) or 3D (num_classes * D * H * W)
+                        pred_mask = torch.argmax(pred_mask_logits, dim=3 - dims) # (D * H * W)
 
+                        if dims == 3: # 3D
+                            loss = criterion(pred_mask_logits.unsqueeze(0), mask) # Add batch dimension to logits
+                        else: # 2D
+                            loss = criterion(pred_mask_logits, mask.squeeze(1)) # Remove channel dimensions from mask
+                    
                         if phase == 'train':
                             loss.backward()
                             # Add gradient clipping for training stability
@@ -82,10 +83,10 @@ def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dat
                     # Accumulate Statistics
                     running_loss += loss.item() * scan.size(0) # Ensure the criterion reduction parameter is 'mean'
 
-                    acc_IoU += sum_IoU(pred_mask, mask)
-                
-                epoch_loss = running_loss / dataset_sizes[phase]
-                epoch_IoU = acc_IoU / dataset_sizes[phase]
+                    acc_IoU += sum_IoU(pred_mask, mask) # pred_mask broadcasts to mask's shape
+
+                epoch_loss = running_loss / dataset_sizes[phase] # Need to somehow normalize this for batch size, but not necessary.
+                epoch_IoU = acc_IoU / dataset_sizes[phase] # The epoch IoU is a mean IoU for the current epoch and phase.
                 print(f'{phase} Loss: {epoch_loss:.4f} Mean IoU: {epoch_IoU:.4f}')
 
                 # Deep copy the model
@@ -116,7 +117,7 @@ def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dat
 
 if __name__ == '__main__':
     # Select dimensions and device
-    dims = 3
+    dims = 2
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using {device} device.')
     if torch.cuda.is_available():

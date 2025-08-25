@@ -138,14 +138,11 @@ class U_Net_Skip_Block(nn.Module): # Incomplete, need a crop in the skip block f
         ** D is depth in 3D case and slice/frame in 2D case.
         '''
         # Level n
-        print(input.shape)
         x1 = self.conv1(input)
-        print(x1.shape)
         x1 = self.relu(x1)
         x1 = self.conv2(x1)
         x1 = self.relu(x1)
         x2 = self.maxpool(x1)
-        print(x2.shape)
 
         # Level n + 1
         x2 = self.block(x2)
@@ -153,7 +150,6 @@ class U_Net_Skip_Block(nn.Module): # Incomplete, need a crop in the skip block f
 
         # Level n
         x3 = torch.cat([x1, x2], dim=-(self.dims + 1))  # Concatenate along channel dimension
-        print(x3.shape)
         x3 = self.conv3(x3)
         x3 = self.relu(x3)
         x3 = self.conv2(x3)

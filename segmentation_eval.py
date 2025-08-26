@@ -30,7 +30,7 @@ def evaluation(model, dims : int, scan, transform, device):
     return masks
 
 # Device and model setup
-dims = 3
+dims = 2
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = True)
 

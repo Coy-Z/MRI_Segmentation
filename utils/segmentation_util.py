@@ -219,15 +219,18 @@ class U_Net(nn.Module):
     
     def _init_weights(self):
         '''
-        Initialize weights using He initialization for ReLU activations.
+        Initialize weights using conservative initialization for stability.
+        Uses Xavier/Glorot initialization for transpose convolutions and downscaled He init for regular convolutions.
         '''
         for m in self.modules():
             if isinstance(m, (nn.Conv2d, nn.Conv3d)):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                # Use small gain for He initialization to prevent gradient explosion
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu', a=0.01)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
             elif isinstance(m, (nn.ConvTranspose2d, nn.ConvTranspose3d)):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                # Use Xavier initialization for transpose convolutions for stability
+                nn.init.xavier_normal_(m.weight, gain=1.0)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
@@ -236,8 +239,8 @@ class Combined_Loss(nn.Module):
     '''
     A custom loss function class for a combined cross-entropy and DICE loss.
     '''
-    def __init__(self, device, alpha : float = 1., beta : float = 0.7, gamma : float = 0.75,
-                 epsilon : float = 1e-8, ce_weights : Sequence[float] = [0.5, 0.5]):
+    def __init__(self, device, dims : int = 3, alpha : float = 1., beta : float = 0.7, gamma : float = 0.75,
+                 epsilon : float = 1e-8, ce_weights : Sequence[float] = [0.1, 0.9]):
         '''
         Initialise the Combined_Loss daughter class of torch.nn.Module.
 
@@ -249,7 +252,9 @@ class Combined_Loss(nn.Module):
             epsilon (float): The smoothing factor.
             ce_weights (Sequence[float]): The relative weighting of classes within the Cross-Entropy loss.
         '''
+        assert dims in [2, 3], 'Invalid spatial dimensions'
         super().__init__()
+        self.dims = dims
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
@@ -261,14 +266,14 @@ class Combined_Loss(nn.Module):
         Calculates the combined cross-entropy and DICE loss, i.e. forward pass of combined loss function.
         
         Args:
-            output (torch.Tensor): Predicted mask logits Float32 tensor (D * 2 * H * W).
-            target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor (D * H * W).
+            output (torch.Tensor): Predicted mask logits Float32 tensor 2D (D * 2 * H * W) or 3D (1 * 2 * D * H * W).
+            target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor 2D (D * H * W) or 3D (1 * D * H * W).
         
         Returns:
             float: The combined loss.
         '''
         CE = self.CELoss(output, target)
-        DICE = self.DiceLoss(output, target, self.epsilon)
+        #DICE = self.DiceLoss(output, target, self.epsilon)
         FOC_TVSKY = self.FocalTverskyLoss(output, target, self.epsilon)
         return self.alpha * FOC_TVSKY + CE
     
@@ -277,8 +282,8 @@ class Combined_Loss(nn.Module):
         Calculate the Dice loss of a predicted mask with respect to the ground truth.
 
         Args:
-            output (torch.Tensor): Predicted mask logits Float32 tensor (D * 2 * H * W).
-            target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor (D * H * W).
+            output (torch.Tensor): Predicted mask logits Float32 tensor 2D (D * 2 * H * W) or 3D (1 * 2 * D * H * W).
+            target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor 2D (D * H * W) or 3D (1 * D * H * W).
             epsilon (float): The smoothing factor.
         
         Returns:
@@ -287,30 +292,32 @@ class Combined_Loss(nn.Module):
         # Softmax the logits to probabilities
         probs = torch.softmax(output, dim = 1)
 
+        # Note the one-hot is actually redundant but can be useful if generalising to multiple classes.
         # Create one-hot encoding
         target_onehot = torch.zeros_like(output)
         target_onehot.scatter_(1, target.unsqueeze(1), 1)
         
         # Focus on foreground class (class 1)
-        probs_fg = probs[:, 1]
-        target_fg = target_onehot[:, 1]
+        probs_fg = probs[:, 1].squeeze()
+        target_fg = target_onehot[:, 1].squeeze()
         
         # Calculate intersection and union in one pass
-        intersection = (probs_fg * target_fg).sum(dim = (1, 2))
-        probs_sum = probs_fg.sum(dim = (1, 2))
-        target_sum = target_fg.sum(dim = (1, 2))
+        sum_dims = (0, 1, 2) if self.dims == 3 else (1, 2) 
+        intersection = (probs_fg * target_fg).sum(dim = sum_dims)
+        probs_sum = probs_fg.sum(dim = sum_dims)
+        target_sum = target_fg.sum(dim = sum_dims)
 
         dice_coeff = (2 * intersection + epsilon) / (probs_sum + target_sum + epsilon)
         dice_loss = 1 - dice_coeff
-        return dice_loss.mean() # Average over depth
+        return dice_loss.mean() # Average over batch/depth
 
     def FocalTverskyLoss(self, output : torch.Tensor, target : torch.Tensor, epsilon : float = 1e-8) -> float:
         '''
         Calculate the Focal Tversky loss of a predicted mask with respect to the ground truth.
 
         Args:
-            output (torch.Tensor): Predicted mask logits Float32 tensor (D * 2 * H * W).
-            target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor (D * H * W).
+            output (torch.Tensor): Predicted mask logits Float32 tensor 2D (D * 2 * H * W) or 3D (1 * 2 * D * H * W).
+            target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor 2D (D * H * W) or 3D (1 * D * H * W).
             epsilon (float): The smoothing factor.
         
         Returns:
@@ -322,24 +329,26 @@ class Combined_Loss(nn.Module):
         gamma = self.gamma
         
         # Softmax the logits to probabilities
-        probs = torch.softmax(output, dim = 1)
+        probs = torch.softmax(output, dim = 1) # 2D (D * 2 * H * W) or 3D (1 * 2 * D * H * W)
         
+        # Note the one-hot is actually redundant but can be useful if generalising to multiple classes.
         # Create one-hot encoding
         target_onehot = torch.zeros_like(output)
-        target_onehot.scatter_(1, target.unsqueeze(1), 1)
-        
+        target_onehot.scatter_(1, target.unsqueeze(1), 1) # 2D (D * 2 * H * W) or 3D (1 * 2 * D * H * W)
+
         # Focus on foreground class (class 1)
-        probs_fg = probs[:, 1]
-        target_fg = target_onehot[:, 1]
-        
+        probs_fg = probs[:, 1].squeeze() # (D * H * W)
+        target_fg = target_onehot[:, 1].squeeze() # (D * H * W)
+
         # Calculate TP, FP, FN and Loss function
-        TP = (probs_fg * target_fg).sum(dim = (1, 2))
-        FP = (probs_fg * (1 - target_fg)).sum(dim = (1, 2))
-        FN = ((1 - probs_fg) * target_fg).sum(dim = (1, 2))
-        
+        sum_dims = (0, 1, 2) if self.dims == 3 else (1, 2) 
+        TP = (probs_fg * target_fg).sum(dim = sum_dims)
+        FP = (probs_fg * (1 - target_fg)).sum(dim = sum_dims)
+        FN = ((1 - probs_fg) * target_fg).sum(dim = sum_dims)
+
         tversky_coeff = (TP + epsilon) / (TP + alpha * FP + beta * FN + epsilon)
         focal_tversky_loss = (1 - tversky_coeff) ** gamma
-        return focal_tversky_loss.mean() # Average over depth
+        return focal_tversky_loss.mean() # Average over batch/depth
 
 def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
     '''
@@ -352,9 +361,9 @@ def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
     Returns:
         float: The IoU score of the two mask tensors.
     '''
-    pred_bool = pred_mask.bool()
-    true_bool = true_mask.bool()
-    
+    pred_bool = pred_mask.squeeze().bool()
+    true_bool = true_mask.squeeze().bool()
+
     intersection = (pred_bool & true_bool).sum().item()
     union = (pred_bool | true_bool).sum().item()
 
@@ -381,7 +390,7 @@ def get_model_instance_unet(num_classes : int, device : str = 'cpu', dims : int 
     if trained: # If the model has been locally trained, load the fine-tuned weights
         model.load_state_dict(torch.load(f'{dims}D_model_params.pth', weights_only = True))
     else:
-        # Initialize weights properly for better training stability
+        # Initialize weights more conservatively for better training stability
         model._init_weights()
 
     return model.to(device) # Move the model to the specified device

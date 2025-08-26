@@ -50,15 +50,15 @@ class Resize(Transform):
             torch.Tensor: The resized tensor 2D (N, self.size) or 3D (self.size)
         '''
         if self.dims == 2:
-            result = nn.functional.interpolate(tensor.unsqueeze(0), size=self.size, mode=self.interpolation).squeeze(0)
+            result = nn.functional.interpolate(tensor.unsqueeze(0), size = self.size, mode = self.interpolation).squeeze(0)
         elif self.dims == 3:
             # For 3D tensors, we need to specify the mode as 'trilinear' or 'nearest'
-            result = nn.functional.interpolate(tensor.unsqueeze(0).unsqueeze(0), size=self.size, mode=self.interpolation).squeeze(0).squeeze(0)
+            result = nn.functional.interpolate(tensor.unsqueeze(0).unsqueeze(0), size = self.size, mode = self.interpolation).squeeze(0).squeeze(0)
         else:
             raise ValueError("Unsupported tensor dimensions. Only 2D and 3D tensors are supported.")
         return result
 
-def gaussian_kernel_2d(kernel_size: int, sigma: float, channels: int):
+def gaussian_kernel_2d(kernel_size : int, sigma : float, channels : int):
     """
     Generate a 2D Gaussian kernel.
     Args:
@@ -79,7 +79,7 @@ def gaussian_kernel_2d(kernel_size: int, sigma: float, channels: int):
     kernel = kernel.expand(channels, channels, *kernel.shape)
     return kernel
 
-def gaussian_kernel_3d(kernel_size: int, sigma: float, channels: int):
+def gaussian_kernel_3d(kernel_size : int, sigma : float, channels : int):
     """
     Generate a 3D Gaussian kernel.
     Args:
@@ -116,14 +116,14 @@ class GaussianBlur(Transform):
         self.dims = dims
         if dims == 2:
             kernel = gaussian_kernel_2d(kernel_size, sigma, channels)
-            self.conv = nn.Conv2d(in_channels=channels, out_channels=channels,
-                                  kernel_size=kernel_size, padding=kernel_size//2,
-                                  groups=channels, bias=False)
+            self.conv = nn.Conv2d(in_channels = channels, out_channels = channels,
+                                  kernel_size = kernel_size, padding = kernel_size // 2,
+                                  groups = channels, bias = False)
         elif dims == 3:
             kernel = gaussian_kernel_3d(kernel_size, sigma, channels)
-            self.conv = nn.Conv3d(in_channels=channels, out_channels=channels,
-                                  kernel_size=kernel_size, padding=kernel_size//2,
-                                  groups=channels, bias=False)
+            self.conv = nn.Conv3d(in_channels = channels, out_channels = channels,
+                                  kernel_size = kernel_size, padding = kernel_size // 2,
+                                  groups = channels, bias = False)
         else:
             raise ValueError("Unsupported dimensions. Only 2D and 3D are supported.")
         
@@ -214,7 +214,7 @@ class ClipAndScale(Transform):
         self.high_clip = high_clip
         self.epsilon = epsilon
 
-    def forward(self, tensor: torch.Tensor) -> torch.Tensor:
+    def forward(self, tensor : torch.Tensor) -> torch.Tensor:
         if self.dims == 2:
             return clip_and_scale_slices(tensor, self.low_clip, self.high_clip, self.epsilon)
         else:
@@ -241,7 +241,7 @@ class RandomXFlip(Transform):
             torch.Tensor: Randomly flipped tensor.
         '''
         if torch.rand(1) < self.p:
-            tensor = torch.flip(tensor, dims=[-1])
+            tensor = torch.flip(tensor, dims = [-1])
         return tensor
 
 class RandomYFlip(Transform):
@@ -265,7 +265,7 @@ class RandomYFlip(Transform):
             torch.Tensor: Randomly flipped tensor.
         '''
         if torch.rand(1) < self.p:
-            tensor = torch.flip(tensor, dims=[-2])
+            tensor = torch.flip(tensor, dims = [-2])
         return tensor
 
 class RandomZFlip(Transform):
@@ -289,11 +289,11 @@ class RandomZFlip(Transform):
             torch.Tensor: Randomly flipped tensor.
         '''
         if torch.rand(1) < self.p:
-            tensor = torch.flip(tensor, dims=[-3])
+            tensor = torch.flip(tensor, dims = [-3])
         return tensor
 
 class RandomRotation(Transform):
-    def __init__(self, degrees: float):
+    def __init__(self, degrees : float):
         '''
         Args:
             degrees (float): Maximum rotation angle in degrees. Rotation will be in range [-degrees, degrees].

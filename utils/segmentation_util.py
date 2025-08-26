@@ -6,7 +6,7 @@ import torchvision
 from torchvision.transforms import v2 as T
 from torch.utils.data import Dataset
 from typing import Sequence
-from utils.custom_transforms import ToTensor, Resize, GaussianBlur, ClipAndScale
+from utils.custom_transforms import ToTensor, Resize, GaussianBlur, ClipAndScale, RandomXFlip, RandomYFlip, RandomZFlip, RandomRotation
 
 class MRIDataset(Dataset):
     '''
@@ -108,20 +108,20 @@ class U_Net_Skip_Block(nn.Module): # Incomplete, need a crop in the skip block f
         self.relu = nn.ReLU(inplace=True)
         if dims == 3:
             # Conv 3x3 modules
-            self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1)
-            self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size=3, padding=1)
-            self.conv3 = nn.Conv3d(2 * out_channels, out_channels, kernel_size=3, padding=1)
+            self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size = 3, padding = 1)
+            self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size = 3, padding = 1)
+            self.conv3 = nn.Conv3d(2 * out_channels, out_channels, kernel_size = 3, padding = 1)
             # Downsampling and upsampling modules
-            self.maxpool = nn.MaxPool3d(kernel_size=2, stride=2)
-            self.deconv = nn.ConvTranspose3d(2 * out_channels, out_channels, kernel_size=2, stride=2)
+            self.maxpool = nn.MaxPool3d(kernel_size = 2, stride = 2)
+            self.deconv = nn.ConvTranspose3d(2 * out_channels, out_channels, kernel_size = 2, stride = 2)
         else:
             # Conv 3x3 modules
-            self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
-            self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
-            self.conv3 = nn.Conv2d(2 * out_channels, out_channels, kernel_size=3, padding=1)
+            self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size = 3, padding = 1)
+            self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size = 3, padding = 1)
+            self.conv3 = nn.Conv2d(2 * out_channels, out_channels, kernel_size = 3, padding = 1)
             # Downsampling and upsampling modules
-            self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
-            self.deconv = nn.ConvTranspose2d(2 * out_channels, out_channels, kernel_size=2, stride=2)
+            self.maxpool = nn.MaxPool2d(kernel_size = 2, stride = 2)
+            self.deconv = nn.ConvTranspose2d(2 * out_channels, out_channels, kernel_size = 2, stride = 2)
         # Block that is to be skipped over
         self.block = block        
 
@@ -149,7 +149,7 @@ class U_Net_Skip_Block(nn.Module): # Incomplete, need a crop in the skip block f
         x2 = self.deconv(x2)
 
         # Level n
-        x3 = torch.cat([x1, x2], dim=-(self.dims + 1))  # Concatenate along channel dimension
+        x3 = torch.cat([x1, x2], dim = -(self.dims + 1))  # Concatenate along channel dimension
         x3 = self.conv3(x3)
         x3 = self.relu(x3)
         x3 = self.conv2(x3)
@@ -171,17 +171,17 @@ class U_Net(nn.Module):
         super().__init__()
         if dims == 3:
             self.level_4 = nn.Sequential(
-                nn.Conv3d(512, 1024, kernel_size=3, padding=1),
-                nn.ReLU(inplace=True),
-                nn.Conv3d(1024, 1024, kernel_size=3, padding=1),
-                nn.ReLU(inplace=True)
+                nn.Conv3d(512, 1024, kernel_size = 3, padding = 1),
+                nn.ReLU(inplace = True),
+                nn.Conv3d(1024, 1024, kernel_size = 3, padding = 1),
+                nn.ReLU(inplace = True)
             )
         else:
             self.level_4 = nn.Sequential(
-                nn.Conv2d(512, 1024, kernel_size=3, padding=1),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(1024, 1024, kernel_size=3, padding=1),
-                nn.ReLU(inplace=True)
+                nn.Conv2d(512, 1024, kernel_size = 3, padding = 1),
+                nn.ReLU(inplace = True),
+                nn.Conv2d(1024, 1024, kernel_size = 3, padding = 1),
+                nn.ReLU(inplace = True)
             )
         
         self.level_3 = U_Net_Skip_Block(dims, self.level_4, 256, 512)
@@ -191,12 +191,12 @@ class U_Net(nn.Module):
         if dims == 3:
             self.network = nn.Sequential(
                 self.level_0,
-                nn.Conv3d(64, num_classes, kernel_size=1)
+                nn.Conv3d(64, num_classes, kernel_size = 1)
             )
         else:
             self.network = nn.Sequential(
                 self.level_0,
-                nn.Conv2d(64, num_classes, kernel_size=1)
+                nn.Conv2d(64, num_classes, kernel_size = 1)
             )
     
     def forward(self, input : torch.Tensor) -> torch.Tensor:
@@ -266,7 +266,7 @@ class Combined_Loss(nn.Module):
             dice_loss (float): The Dice loss (1 - Dice coefficient). The negation allows for gradient descent.
         '''
         # Softmax the logits to probabilities
-        probs = torch.softmax(output, dim=1)
+        probs = torch.softmax(output, dim = 1)
 
         # Create one-hot encoding
         target_onehot = torch.zeros_like(output)
@@ -277,10 +277,10 @@ class Combined_Loss(nn.Module):
         target_fg = target_onehot[:, 1]
         
         # Calculate intersection and union in one pass
-        intersection = (probs_fg * target_fg).sum(dim=(1, 2))
-        probs_sum = probs_fg.sum(dim=(1, 2))
-        target_sum = target_fg.sum(dim=(1, 2))
-        
+        intersection = (probs_fg * target_fg).sum(dim = (1, 2))
+        probs_sum = probs_fg.sum(dim = (1, 2))
+        target_sum = target_fg.sum(dim = (1, 2))
+
         dice_coeff = (2 * intersection + epsilon) / (probs_sum + target_sum + epsilon)
         dice_loss = 1 - dice_coeff
         return dice_loss.mean() # Average over depth
@@ -303,7 +303,7 @@ class Combined_Loss(nn.Module):
         gamma = self.gamma
         
         # Softmax the logits to probabilities
-        probs = torch.softmax(output, dim=1)
+        probs = torch.softmax(output, dim = 1)
         
         # Create one-hot encoding
         target_onehot = torch.zeros_like(output)
@@ -314,9 +314,9 @@ class Combined_Loss(nn.Module):
         target_fg = target_onehot[:, 1]
         
         # Calculate TP, FP, FN and Loss function
-        TP = (probs_fg * target_fg).sum(dim=(1, 2))
-        FP = (probs_fg * (1 - target_fg)).sum(dim=(1, 2))
-        FN = ((1 - probs_fg) * target_fg).sum(dim=(1, 2))
+        TP = (probs_fg * target_fg).sum(dim = (1, 2))
+        FP = (probs_fg * (1 - target_fg)).sum(dim = (1, 2))
+        FN = ((1 - probs_fg) * target_fg).sum(dim = (1, 2))
         
         tversky_coeff = (TP + epsilon) / (TP + alpha * FP + beta * FN + epsilon)
         focal_tversky_loss = (1 - tversky_coeff) ** gamma
@@ -343,7 +343,7 @@ def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
         return 1.0 if intersection == 0 else 0.0
     return float(intersection) / union
 
-def get_model_instance_unet(num_classes : int, device : str = 'cpu', dims : int = 3, trained : bool = False) -> torchvision.models.segmentation.fcn.FCN:
+def get_model_instance_unet(num_classes : int, device : str = 'cpu', dims : int = 3, trained : bool = False) -> U_Net:
     '''
     Load an instance of the model of choice, with pre-trained weights.
 
@@ -356,7 +356,7 @@ def get_model_instance_unet(num_classes : int, device : str = 'cpu', dims : int 
     Returns:
         model (torchvision.models.segmentation.fcn_resnet101): The model with required weights.
     '''
-    model = U_Net(dims=dims, num_classes=num_classes)
+    model = U_Net(dims = dims, num_classes = num_classes)
 
     if trained: # If the model has been locally trained, load the fine-tuned weights
         model.load_state_dict(torch.load(f'{dims}D_model_params.pth', weights_only = True))
@@ -380,16 +380,16 @@ def _get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
         # For masks: don't scale, keep as integers for proper class labels
         return T.Compose([
             T.ToImage(),
-            T.ToDtype(torch.int64, scale=False),  # Keep integer labels, no scaling
-            T.Resize(size=(64, 64), interpolation=interpolation),
+            T.ToDtype(torch.int64, scale = False),  # Keep integer labels, no scaling
+            T.Resize(size = (64, 64), interpolation = interpolation),
         ])
     else: 
         interpolation = T.InterpolationMode.BILINEAR
         if phase == 'train':
             return T.Compose([
                 T.ToImage(),
-                T.ToDtype(torch.float32, scale=True),
-                T.Resize(size=(64, 64), interpolation=interpolation),
+                T.ToDtype(torch.float32, scale = True),
+                T.Resize(size = (64, 64), interpolation = interpolation),
                 #T.RandomResizedCrop(size = (50, 50), scale = (0.5, 1.5), interpolation = interpolation),  # vary size
                 T.GaussianBlur(kernel_size = 5, sigma = 0.1),
                 ClipAndScale()
@@ -397,21 +397,20 @@ def _get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
         else:  # validation phase
             return T.Compose([
                 T.ToImage(),
-                T.ToDtype(torch.float32, scale=True),
-                T.Resize(size=(64, 64), interpolation=interpolation),
+                T.ToDtype(torch.float32, scale = True),
+                T.Resize(size = (64, 64), interpolation = interpolation),
                 T.GaussianBlur(kernel_size = 5, sigma = 0.1),
                 ClipAndScale()
             ])
 
-def get_transform(data : str = 'target', dims : int = 3, phase : str = 'train') -> T.Compose: # Need to add random flips for train and val phases.
+def get_transform(data : str = 'target', dims : int = 3) -> T.Compose:
     '''
     Get the appropriate transform for the input data.
     Must apply to either 3D (D, H, W, C) or 2D (N, H, W, C).
     Args:
         data (str): The type of input data, either 'input' for scans or 'target' for masks.
         dims (int): The number of dimensions for the data (2 or 3).
-        phase (str): The phase of the dataset, either 'train' or 'val'.
-        
+
     Returns:
         transform (T.Compose): The composed transform for the specified input type.
     '''
@@ -423,18 +422,42 @@ def get_transform(data : str = 'target', dims : int = 3, phase : str = 'train') 
     if data == 'target':
         return T.Compose([
             ToTensor(),
-            T.ToDtype(torch.float32, scale=False),
-            Resize(dims=dims, size=size, interpolation='nearest'),
-            T.ToDtype(torch.int64, scale=False)  # Convert to int64 after resizing
+            T.ToDtype(torch.float32, scale = False),
+            Resize(dims = dims, size = size, interpolation = 'nearest'),
+            T.ToDtype(torch.int64, scale = False)  # Convert to int64 after resizing
         ])
     else:
         interpolation = 'bilinear' if dims == 2 else 'trilinear'
         return T.Compose([
             ToTensor(),
-            T.ToDtype(torch.float32, scale=True),
-            GaussianBlur(dims=dims, kernel_size=5, sigma=0.1),
-            Resize(dims=dims, size=size, interpolation=interpolation),
-            ClipAndScale(dims=dims, low_clip=1., high_clip=99., epsilon=1e-8)
+            T.ToDtype(torch.float32, scale = True),
+            GaussianBlur(dims = dims, kernel_size = 5, sigma = 0.1),
+            Resize(dims = dims, size = size, interpolation = interpolation),
+            ClipAndScale(dims = dims, low_clip = 1., high_clip = 99., epsilon = 1e-8)
+        ])
+
+def get_augment(dims : int) -> T.Compose:
+    """
+    Get the appropriate augmentations for the input data.
+    Args:
+        dims (int): The number of dimensions for the data (2 or 3).
+
+    Returns:
+        augment (T.Compose): The composed augmentations for the specified dimensions.
+    """
+    assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D data is supported."
+    if dims == 3:
+        return T.Compose([
+            RandomXFlip(p = 0.5),
+            RandomYFlip(p = 0.5),
+            RandomZFlip(p = 0.5),
+            RandomRotation(degrees = 15),
+        ])
+    else:
+        return T.Compose([
+            RandomXFlip(p = 0.5),
+            RandomYFlip(p = 0.5),
+            RandomRotation(degrees = 15),
         ])
 
 def custom_collate_fn(batch):

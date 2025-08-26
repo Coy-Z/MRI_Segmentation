@@ -35,7 +35,7 @@ model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, t
 val_transform = T.Compose([
     ToTensor(),
     T.ToDtype(torch.float32, scale=True),
-    Resize(dims = dims, size=(64, 64) if dims == 2 else (64, 64, 64), interpolation='bilinear' if dims == 2 else 'trilinear'),
+    Resize(dims = dims, size = (64, 64) if dims == 2 else (64, 64, 64), interpolation = 'bilinear' if dims == 2 else 'trilinear'),
     ClipAndScale()
 ])
 
@@ -47,7 +47,7 @@ images = np.load(f'data/val/magn/{target}.npy')
 masks = evaluation(model, dims, images, val_transform, device)
 
 # Resize images
-images = Resize(dims = dims, size=(64, 64) if dims == 2 else (64, 64, 64), interpolation = 'bilinear' if dims == 2 else 'trilinear')(ToTensor()(images)).numpy()
+images = Resize(dims = dims, size = (64, 64) if dims == 2 else (64, 64, 64), interpolation = 'bilinear' if dims == 2 else 'trilinear')(ToTensor()(images)).numpy()
 
 # Visualization
 pcm = []

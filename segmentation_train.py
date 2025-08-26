@@ -5,12 +5,11 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
-from utils.custom_transforms import RandomXFlip, RandomYFlip, RandomZFlip, RandomRotation, GaussianNoise
-from utils.segmentation_util import get_model_instance_unet, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
+from utils.segmentation_util import get_model_instance_unet, sum_IoU, get_transform, get_augment, custom_collate_fn, MRIDataset, Combined_Loss
 
 '''Need to review using regularisation in loss instead of patience-based early stopping.'''
 
-def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs, patience=15):
+def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs, patience = 15):
     """
     Trains the model and returns the best model based on validation IoU.
 
@@ -118,7 +117,7 @@ def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dat
 
 if __name__ == '__main__':
     # Select dimensions and device
-    dims = 2
+    dims = 3
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using {device} device.')
     if torch.cuda.is_available():
@@ -127,18 +126,9 @@ if __name__ == '__main__':
 
     # Define transforms.
     # Augments are random changes, which are useful for training but not validation.
-    transform = get_transform(data='input', dims=dims)
-    target_transform = get_transform(data='target', dims=dims)
-    augments = [
-        RandomXFlip(p = 0.5),
-        RandomYFlip(p = 0.5),
-        RandomRotation(degrees = 15),
-    ]
-    if dims == 3:
-        augments.insert(2, RandomZFlip(p = 0.5))
-    augment = T.Compose(
-        augments
-        )
+    transform = get_transform(data = 'input', dims = dims)
+    target_transform = get_transform(data = 'target', dims = dims)
+    augment = get_augment(dims = dims)
 
     # Set up datasets and dataloaders
     data_dir = 'data'
@@ -151,30 +141,29 @@ if __name__ == '__main__':
     # Set up DataLoader
     num_workers = min(4, os.cpu_count())
     batch_size = 1  # Keep batch_size = 1 due to variable scan sizes and small validation set
-    dataloaders = {x: DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True,
-                                 num_workers=num_workers, persistent_workers=True if num_workers > 0 else False,
-                                 pin_memory=torch.cuda.is_available(),  # Pin memory for faster GPU transfer
-                                 collate_fn=custom_collate_fn  # Additional redundancy in case batch_size > 1.
+    dataloaders = {x: DataLoader(image_datasets[x], batch_size = batch_size, shuffle = True,
+                                 num_workers = num_workers, persistent_workers = True if num_workers > 0 else False,
+                                 pin_memory = torch.cuda.is_available(),  # Pin memory for faster GPU transfer
+                                 collate_fn = custom_collate_fn  # Additional redundancy in case batch_size > 1.
                                  ) for x in ['train', 'val']}
     
     # Initialize model, loss, optimizer, and scheduler
     model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = False)
-    criterion = Combined_Loss(device, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights=(0.1, 0.9))
+    criterion = Combined_Loss(device, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights = (0.1, 0.9))
     
     # Use AdamW with weight decay for L2 regularization
     optimizer = optim.AdamW(model.parameters(), lr = 0.0001, weight_decay = 0.01)
     
     # Conservative learning rate schedule
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=10, min_lr=1e-7
-    )
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode = 'max', factor = 0.5,
+                                                        patience = 10, min_lr = 1e-7)
 
     print(f"\nDataset sizes: {dataset_sizes}")
     print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     
     # Train the model
     model = train(model, device, dims, criterion, optimizer, dataloaders, lr_scheduler, dataset_sizes, 
-                  num_epochs=100, patience=20)
+                  num_epochs = 100, patience = 20)
 
     # Save the model parameters
     torch.save(model.state_dict(), f'{dims}D_model_params.pth')

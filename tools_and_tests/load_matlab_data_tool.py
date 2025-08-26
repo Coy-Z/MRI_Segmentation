@@ -38,10 +38,10 @@ def compare_xyz():
         magn.append(np.abs(str_tuplex[i]) - np.abs(str_tuplez[i]))
     numSlices = 256
 
-    fig, ax = plt.subplots(2, 2, figsize=(8,8))
+    fig, ax = plt.subplots(2, 2, figsize = (8,8))
     pcm = []
     for i in range(4):
-        pcm.append(ax[i//2, i%2].pcolormesh(magn[i][128], cmap='cividis'))
+        pcm.append(ax[i//2, i%2].pcolormesh(magn[i][128], cmap = 'cividis'))
         ax[i//2, i%2].set_title(f'str_tuple[{i+3}]')
         ax[i//2, i%2].set_axis_off()
         fig.colorbar(pcm[i], ax=ax[i//2, i%2])
@@ -60,11 +60,11 @@ def display_xdata_single(i: int):
     # Display the x data for a specific index
     magn = np.abs(str_tuplex[i] - str_tuplex[i + 4]) # Subtracting off background noise
     numSlices = magn.shape[0]
-    fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    pcm = ax.pcolormesh(magn[128], cmap='cividis')
+    fig, ax = plt.subplots(1, 1, figsize = (6, 6))
+    pcm = ax.pcolormesh(magn[128], cmap = 'cividis')
     ax.set_title(f'str_tuple[{i}]')
     ax.set_axis_off()
-    fig.colorbar(pcm, ax=ax, extend='max')
+    fig.colorbar(pcm, ax = ax, extend = 'max')
 
     # Animation update function
     def updateAnim(frame):
@@ -84,7 +84,7 @@ def display_xdata(arr: list):
     fig, ax = plt.subplots(2, (len(arr) + 1)//2, figsize=(len(arr) * 4, 8))
     pcm = []
     for i in range(len(arr)):
-        pcm.append(ax[i%2, i//2].pcolormesh(magn[i][128], cmap='cividis'))
+        pcm.append(ax[i%2, i//2].pcolormesh(magn[i][128], cmap = 'cividis'))
         ax[i%2, i//2].set_title(f'str_tuple[{arr[i]}]')
         ax[i%2, i//2].set_axis_off()
         fig.colorbar(pcm[i], ax=ax[i%2, i//2])
@@ -104,11 +104,11 @@ def compare_masks():
     mask = np.abs(str_tuplex[0]) - np.abs(str_tuplez[0])
     numSlices = 256
 
-    fig, ax = plt.subplots(1, 1, figsize=(8,8))
-    pcm = ax.pcolormesh(mask[128], cmap='cividis')
+    fig, ax = plt.subplots(1, 1, figsize = (8,8))
+    pcm = ax.pcolormesh(mask[128], cmap = 'cividis')
     ax.set_title(f'Mask Comparison')
     ax.set_axis_off()
-    fig.colorbar(pcm, ax=ax)
+    fig.colorbar(pcm, ax = ax)
 
     # Animation update function
     def updateAnim(frame):
@@ -124,8 +124,8 @@ def compare_masks():
 #display_xdata_single(7)
 #display_xdata([3, 4, 5, 6, 7, 8, 9, 10])
 
-sumMagn = np.zeros_like(str_tuplex[0], dtype=np.float32)
-sumMask = np.zeros_like(str_tuplex[0], dtype=np.int8)
+sumMagn = np.zeros_like(str_tuplex[0], dtype = np.float32)
+sumMask = np.zeros_like(str_tuplex[0], dtype = np.int8)
 counter = 0
 for str_tuple in [str_tuplex, str_tupley, str_tuplez]:
     for i in range(3, 7):

@@ -12,7 +12,7 @@ numSlicesMagn = scanMagn.shape[0]
 numSlicesMask = scanMask.shape[0]
 
 fig, ax = plt.subplots(2, 2, figsize = (10, 7))
-plt.subplots_adjust(bottom=0.2)
+plt.subplots_adjust(bottom = 0.2)
 title = [[None, None],[None, None]]
 pcm = [[None, None],[None, None]]
 for i in range(2):

@@ -62,6 +62,7 @@ class Random_Speed_Field():
             x (np.ndarray): The input array.
             length_scale (float): The length scale of the RBF.
             variance (float): The variance of the RBF.
+
         Returns:
             The Cholesky decomposition of the 1D RBF kernel (np.ndarray).
         '''
@@ -91,6 +92,7 @@ class Random_Speed_Field():
             grid_shape (tuple): The shape of the grid to sample on (height, width). If None, uses self.V.shape
             length_scale (float): The length scale of the Gaussian Process (larger -> smoother).
             variance (float): The variance of the Gaussian Process (controls amplitude of function).
+
         Returns:
             The sampled function (np.ndarray).
         '''
@@ -102,8 +104,8 @@ class Random_Speed_Field():
         y = np.linspace(0, 1, ny)
         x = np.linspace(0, 1, nx)
 
-        Ly = self.cholesky_rbf_1d(y, length_scale=length_scale, variance=variance)
-        Lx = self.cholesky_rbf_1d(x, length_scale=length_scale, variance=variance)
+        Ly = self.cholesky_rbf_1d(y, length_scale = length_scale, variance = variance)
+        Lx = self.cholesky_rbf_1d(x, length_scale = length_scale, variance = variance)
 
         # Sample from standard normal and transform
         # Generate a random latent vector
@@ -124,7 +126,7 @@ class Random_Speed_Field():
             and also since it makes more physical sense
         '''
         length_scale = np.exp(np.random.normal(log_length_scale_mean, log_length_scale_variance))
-        self.field += self.gaussian_process(grid_shape=self.shape, length_scale=length_scale, variance=amplitude_variance)
+        self.field += self.gaussian_process(grid_shape = self.shape, length_scale = length_scale, variance = amplitude_variance)
         return
     
     def reset(self):
@@ -178,7 +180,7 @@ class Level_Set_SDF():
             Dn, Ds, De, Dw (tuple): The 4 cardinal derivatives (North, South, East, West)
         '''
         # Pad SDF edges
-        padded_sdf = np.pad(self.sdf, pad_width=1, mode='edge')
+        padded_sdf = np.pad(self.sdf, pad_width = 1, mode = 'edge')
 
         # Calculate Cardinal Derivatives
         Dn = np.zeros_like(self.sdf)
@@ -288,6 +290,7 @@ class SDF_MRI(Level_Set_SDF):
             x (np.ndarray): The input array.
             length_scale (float): The length scale of the RBF.
             variance (float): The variance of the RBF.
+
         Returns:
             The Cholesky decomposition of the 1D RBF kernel (np.ndarray).
         '''
@@ -317,6 +320,7 @@ class SDF_MRI(Level_Set_SDF):
             grid_shape (tuple): The shape of the grid to sample on (height, width). If None, uses self.V.shape
             length_scale (float): The length scale of the Gaussian Process (larger -> smoother).
             variance (float): The variance of the Gaussian Process (controls amplitude of function).
+
         Returns:
             The sampled function (np.ndarray).
         '''
@@ -328,8 +332,8 @@ class SDF_MRI(Level_Set_SDF):
         y = np.linspace(0, 1, ny)
         x = np.linspace(0, 1, nx)
 
-        Ly = self.cholesky_rbf_1d(y, length_scale=length_scale, variance=variance)
-        Lx = self.cholesky_rbf_1d(x, length_scale=length_scale, variance=variance)
+        Ly = self.cholesky_rbf_1d(y, length_scale = length_scale, variance = variance)
+        Lx = self.cholesky_rbf_1d(x, length_scale = length_scale, variance = variance)
 
         # Sample from standard normal and transform
         # Generate a random latent vector
@@ -389,9 +393,9 @@ class SDF_MRI_Circle(SDF_MRI):
         # Set up seed SDF
         # \rho - R for analytical SDF of a circle
         # Randomise center location for location invariance
-        center = np.random.multivariate_normal(mean=np.zeros(2), cov=np.eye(2) * center_var) * V.shape // 2 + np.array(V.shape) // 2
+        center = np.random.multivariate_normal(mean = np.zeros(2), cov = np.eye(2) * center_var) * V.shape // 2 + np.array(V.shape) // 2
         vec = np.stack(np.indices(V.shape), axis = -1)
-        self.sdf = np.linalg.norm(vec - center, axis=-1) - r  # Ensure SDF is non-negative outside the circle
+        self.sdf = np.linalg.norm(vec - center, axis = -1) - r  # Ensure SDF is non-negative outside the circle
         #self.sdf = np.sqrt((vec - center) ** 2).sum(axis=-1) - r
 
 class SDF_MRI_Tube(SDF_MRI):
@@ -429,8 +433,8 @@ class SDF_MRI_Tube(SDF_MRI):
             angle = np.random.uniform(0, 2 * np.pi)
             n = np.array([np.cos(angle), np.sin(angle)])
             self.dir = np.array([-n[1], n[0]])  # Perpendicular vector to n
-        point = np.random.multivariate_normal(mean=np.zeros(2), cov=np.eye(2) * point_var) * V.shape // 2 + np.array(V.shape) // 2
-        vec = np.stack(np.indices(V.shape), axis=-1)
+        point = np.random.multivariate_normal(mean = np.zeros(2), cov = np.eye(2) * point_var) * V.shape // 2 + np.array(V.shape) // 2
+        vec = np.stack(np.indices(V.shape), axis = -1)
         # Compute the signed distance function
         if smoothed:
             self.sdf = np.sqrt((np.dot(vec - point, n))**2 + 2) - r  # SDF is the distance to the tube

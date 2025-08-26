@@ -9,7 +9,7 @@ assert magn.shape == mask.shape, "Magnitude and mask shapes do not match."
 
 # Create a combined table for magn and mask
 # Each point will have 5 values: x, y, z, the magnitude, and the mask value
-table = np.zeros((numPoints, 6), dtype=np.float32)
+table = np.zeros((numPoints, 6), dtype = np.float32)
 
 # Fill the table with coordinates and values
 point_idx = 0
@@ -26,4 +26,4 @@ for x in range(magn.shape[0]):
 
 # Save the table to a CSV file
 output_file = 'data/aorta_low_re/RawData/256x128x128/magn_mask_table.csv'
-np.savetxt(output_file, table, delimiter=',', header='Point_ID,x,y,z,magn,in_', comments='', fmt='%.6f')
+np.savetxt(output_file, table, delimiter = ',', header = 'Point_ID,x,y,z,magn,in_', comments = '', fmt = '%.6f')

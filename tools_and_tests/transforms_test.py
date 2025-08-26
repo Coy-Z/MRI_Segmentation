@@ -15,18 +15,18 @@ dims = 2
 transform = T.Compose([
     # Transform
     ToTensor(), # Good
-    T.ToDtype(torch.float32, scale=True),
-    Resize(dims = dims, size=(64, 64) if dims == 2 else (20, 64, 64), interpolation='nearest'), # Good
-    GaussianBlur(dims = dims, kernel_size= 10, sigma = 3), # Good
-    Resize(dims = dims, size=(128, 128) if dims == 2 else (20, 128, 128), interpolation = 'bilinear' if dims == 2 else 'trilinear'), # Good
-    ClipAndScale(dims = dims, low_clip=1, high_clip=99, epsilon=1e-8), # Good
+    T.ToDtype(torch.float32, scale = True),
+    Resize(dims = dims, size = (64, 64) if dims == 2 else (20, 64, 64), interpolation = 'nearest'), # Good
+    GaussianBlur(dims = dims, kernel_size = 10, sigma = 3), # Good
+    Resize(dims = dims, size = (128, 128) if dims == 2 else (20, 128, 128), interpolation = 'bilinear' if dims == 2 else 'trilinear'), # Good
+    ClipAndScale(dims = dims, low_clip = 1, high_clip = 99, epsilon = 1e-8), # Good
 
     # Augment
-    RandomXFlip(p=1), # Good
-    RandomYFlip(p=1), # Good
-    #RandomZFlip(p=0.5) if dims == 3 else None, # Good
-    RandomRotation(degrees=15), # Good
-    GaussianNoise(mean=0, sigma=0.1, clip=True), # Good
+    RandomXFlip(p = 1), # Good
+    RandomYFlip(p = 1), # Good
+    #RandomZFlip(p = 0.5) if dims == 3 else None, # Good
+    RandomRotation(degrees = 15), # Good
+    GaussianNoise(mean = 0, sigma = 0.1, clip = True), # Good
 ])
 
 tensor = transform(delta)

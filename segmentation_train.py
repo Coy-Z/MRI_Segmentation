@@ -5,6 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
+from utils.custom_transforms import RandomXFlip, RandomYFlip, RandomZFlip, RandomRotation, GaussianNoise
 from utils.segmentation_util import get_model_instance_unet, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
 
 '''Need to review using regularisation in loss instead of patience-based early stopping.'''
@@ -129,11 +130,11 @@ if __name__ == '__main__':
     transform = get_transform(data='input', dims=dims)
     target_transform = get_transform(data='target', dims=dims)
     augment = T.Compose([ # Currently not in use
-        T.GaussianNoise(mean = 0, sigma = 0.2),
-        T.RandomHorizontalFlip(p = 0.5),
-        T.RandomVerticalFlip(p = 0.5),
-        T.RandomRotation(degrees = 15),
-        T.RandomAffine(degrees = 0, translate = (0.1, 0.1)),
+        GaussianNoise(mean = 0, sigma = 0.2),
+        RandomXFlip(p = 0.5),
+        RandomYFlip(p = 0.5),
+        RandomZFlip(p = 0.5) if dims == 3 else None,
+        RandomRotation(degrees = 15),
     ])
 
     # Set up datasets and dataloaders
@@ -141,7 +142,7 @@ if __name__ == '__main__':
     image_datasets = {x : MRIDataset(root = os.path.join(data_dir, x), phase = x,
                                      dims = dims, transform = transform,
                                      target_transform = target_transform,
-                                     augment = None) for x in ['train', 'val']}
+                                     augment = augment) for x in ['train', 'val']}
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
     
     # Set up DataLoader

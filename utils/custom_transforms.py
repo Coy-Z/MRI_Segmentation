@@ -185,3 +185,57 @@ class ClipAndScale(Transform):
             return clip_and_scale_slices(tensor, self.low_clip, self.high_clip, self.epsilon)
         else:
             return clip_and_scale(tensor, self.low_clip, self.high_clip, self.epsilon)
+
+class RandomXFlip(Transform):
+    def __init__(self, p = 0.5):
+        super().__init__()
+        self.p = p
+
+    def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        if torch.rand(1) < self.p:
+            tensor = torch.flip(tensor, dims=[-1])
+        return tensor
+
+class RandomYFlip(Transform):
+    def __init__(self, p = 0.5):
+        super().__init__()
+        self.p = p
+
+    def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        if torch.rand(1) < self.p:
+            tensor = torch.flip(tensor, dims=[-2])
+        return tensor
+
+class RandomZFlip(Transform):
+    def __init__(self, p = 0.5):
+        super().__init__()
+        self.p = p
+
+    def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        if torch.rand(1) < self.p:
+            tensor = torch.flip(tensor, dims=[-3])
+        return tensor
+
+class RandomRotation(Transform):
+    def __init__(self, degrees: float):
+        super().__init__()
+        self.degrees = degrees
+
+    def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        if torch.rand(1) > 0.5:
+            angle = torch.randint(-self.degrees, self.degrees + 1, (1,)).item()
+            tensor = T.functional.rotate(tensor, angle)
+        return tensor
+    
+class GaussianNoise(Transform):
+    def __init__(self, mean : float = 0.0, sigma : float = 0.1, clip : bool = False):
+        super().__init__()
+        self.mean = mean
+        self.sigma = sigma
+        self.clip = clip
+
+    def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        noise = torch.randn_like(tensor) * self.sigma + self.mean
+        if self.clip:
+            noise = torch.clamp(noise, 0, 1)
+        return tensor + noise

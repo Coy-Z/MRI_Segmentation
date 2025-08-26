@@ -15,7 +15,7 @@ class MRIDataset(Dataset):
     def __init__(self, root : str, phase : str = 'val', dims : int = 2, transform : T.Compose = None,
                  target_transform : T.Compose = None, augment : T.Compose = None):
         '''
-        Initialise the MRIDataset daughter class of torch.utils.data.Dataset.
+        Initialize the MRIDataset daughter class of torch.utils.data.Dataset.
 
         Args:
             root (str): The string directory of the data.
@@ -25,8 +25,8 @@ class MRIDataset(Dataset):
             target_transform (T.Compose): The deterministic component of mask transform (i.e. no random flipping -> validation transform).
             augment (T.Compose): The stochastic component of transform (e.g. random horizontal flip -> additional training transform).
 
-        N.B. transform and augment are separate because we must merge the scan and mask to ensure consistent augmentation.
-             However, interpolation schemes for the two are different.
+        Note: transform and augment are separate because we must merge the scan and mask to ensure consistent augmentation.
+              However, interpolation schemes for the two are different.
         '''
         assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D scans are supported."
         super().__init__()
@@ -39,9 +39,12 @@ class MRIDataset(Dataset):
         self.target_transform = target_transform
         self.augment = augment
     
-    def __len__(self):
+    def __len__(self) -> int:
         '''
         Return the number of scans in the Dataset.
+
+        Returns:
+            int: The number of scans in the dataset.
         '''
         return len(self.scans)
     
@@ -53,8 +56,7 @@ class MRIDataset(Dataset):
             idx (int): The index of the scan we wish to retrieve from the dataset.
         
         Returns:
-            scan (torch.Tensor): The pre-processed RGB scan Float32 tensor (D * H * W).
-            mask (torch.Tensor): The pre-processed binary mask Int64 tensor (D * H * W).
+            tuple[torch.Tensor, torch.Tensor]: A tuple containing the preprocessed scan and mask tensors.
         '''
         scan_path = os.path.join(self.root, "magn", self.scans[idx])
         mask_path = os.path.join(self.root, "mask", self.masks[idx])
@@ -75,33 +77,31 @@ class MRIDataset(Dataset):
         if self.augment is None or self.phase == 'val':
             return scan, mask
 
-        data = torch.cat([scan.unsqueeze(0), mask.unsqueeze(0)], 0) # (2 * D * H * W)
+        data = torch.cat([scan.unsqueeze(0), mask.unsqueeze(0)], dim=0) # (2 * D * H * W)
         data = self.augment(data) # Need to ensure augment knows whether to work on 2D or 3D data.
         scan = data[0, :, :, :] # (1 * D * H * W)
         mask = data[1, :, :, :] # (1 * D * H * W)
         return scan, mask
-    
-    #def __getitems__(self, idxs : list[int]) -> list[tuple[torch.Tensor, torch.Tensor]]:
-        return
 
-class U_Net_Skip_Block(nn.Module): # Incomplete, need a crop in the skip block for robustness.
+class U_Net_Skip_Block(nn.Module):
     '''
     Skip Connections for the U-Net model.
-
-    N.B. The U-Net architecture at present requires sizes to be powers of 2, to account for correct upsampling.
-         This can be tackled by introducing a crop in the skip block.
+    
+    Note: The U-Net architecture at present requires sizes to be powers of 2, to account for correct upsampling.
+          This can be tackled by introducing a crop in the skip block.
     '''
     def __init__(self, dims : int, block : nn.Module, in_channels : int, out_channels : int):
         '''
-        Initialise the modules that we will be using in this skip block.
+        Initialize the modules that we will be using in this skip block.
+
         Args:
             dims (int): The number of spatial dimensions (2 or 3).
             block (nn.Module): The block to be skipped.
             in_channels (int): The number of input channels.
             out_channels (int): The number of output channels.
 
-        N.B. padding = 1 means we do not change the spatial dimensions between input and output, which is required for the task at hand.
-            The original U-Net paper does not use padding, and instead crops the skip.
+        Note: padding = 1 means we do not change the spatial dimensions between input and output, which is required for the task at hand.
+              The original U-Net paper does not use padding, and instead crops the skip.
         '''
         assert dims in [2, 3], "Invalid spatial dimensions"
         super().__init__()
@@ -129,6 +129,7 @@ class U_Net_Skip_Block(nn.Module): # Incomplete, need a crop in the skip block f
     def forward(self, input : torch.Tensor) -> torch.Tensor:
         '''
         Forward pass of the skip block.
+
         Args:
             input (torch.Tensor): Input tensor of shape 2D (B*, D, in_channels, H, W) or 3D (B*, in_channels, D, H, W).
 
@@ -165,8 +166,10 @@ class U_Net(nn.Module):
         '''
         Initialise the full U-Net model.
         Having constructed the U_Net_Skip_Block, we can simply nest them as below.
+
         Args:
             dims (int): The number of spatial dimensions (2 or 3).
+            num_classes (int): The number of output classes for segmentation.
         '''
         assert dims in [2, 3], "Invalid spatial dimensions"
         super().__init__()
@@ -203,6 +206,7 @@ class U_Net(nn.Module):
     def forward(self, input : torch.Tensor) -> torch.Tensor:
         '''
         Forward pass of the model.
+
         Args:
             input (torch.Tensor): Input tensor of shape (B*, 1, D**, H, W).
         
@@ -213,6 +217,20 @@ class U_Net(nn.Module):
         ** D is only present in 3D case.
         '''
         return self.network(input)
+    
+    def _init_weights(self):
+        '''
+        Initialize weights using He initialization for ReLU activations.
+        '''
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.Conv3d)):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, (nn.ConvTranspose2d, nn.ConvTranspose3d)):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
 
 class Combined_Loss(nn.Module):
@@ -225,11 +243,12 @@ class Combined_Loss(nn.Module):
         Initialise the Combined_Loss daughter class of torch.nn.Module.
 
         Args:
+            device (torch.device): The device for computation.
             alpha (float): Relative weighting of Cross-Entropy and Dice losses (N.B. only relative magnitude matters, i.e. alpha = 0 -> Cross-Entropy loss dominates).
             beta (float): Relative weighting of false positives and false negatives in Tversky loss (i.e. beta = 0 -> no false negatives, beta = 1 -> no false positives).
             gamma (float): The Focal loss exponent.
             epsilon (float): The smoothing factor.
-            ce_weights (iterable): The relative weighting of classes within the Cross-Entropy loss.
+            ce_weights (Sequence[float]): The relative weighting of classes within the Cross-Entropy loss.
         '''
         super().__init__()
         self.alpha = alpha
@@ -247,7 +266,7 @@ class Combined_Loss(nn.Module):
             target (torch.Tensor): Ground truth binary (0,1) mask Int64 tensor (D * H * W).
         
         Returns:
-            loss (float): The combined loss.
+            float: The combined loss.
         '''
         CE = self.CELoss(output, target)
         DICE = self.DiceLoss(output, target, self.epsilon)
@@ -264,7 +283,7 @@ class Combined_Loss(nn.Module):
             epsilon (float): The smoothing factor.
         
         Returns:
-            dice_loss (float): The Dice loss (1 - Dice coefficient). The negation allows for gradient descent.
+            float: The Dice loss (1 - Dice coefficient). The negation allows for gradient descent.
         '''
         # Softmax the logits to probabilities
         probs = torch.softmax(output, dim = 1)
@@ -296,7 +315,7 @@ class Combined_Loss(nn.Module):
             epsilon (float): The smoothing factor.
         
         Returns:
-            focal_tversky_loss (float): The Focal Tversky loss.
+            float: The Focal Tversky loss.
         '''
         # Hyperparameters
         alpha = 1 - self.beta
@@ -332,7 +351,7 @@ def sum_IoU(pred_mask : torch.Tensor, true_mask : torch.Tensor) -> float:
         true_mask (torch.Tensor): A binary (0,1) ground truth mask Int64 tensor (same shape as pred_mask)
     
     Returns:
-        IoU (float): The IoU score of the two mask tensors.
+        float: The IoU score of the two mask tensors.
     '''
     pred_bool = pred_mask.bool()
     true_bool = true_mask.bool()
@@ -355,13 +374,16 @@ def get_model_instance_unet(num_classes : int, device : str = 'cpu', dims : int 
         trained (bool): A boolean depicting whether the model has been locally trained or not, i.e. whether to load fine-tuned or default weights.
 
     Returns:
-        model (torchvision.models.segmentation.fcn_resnet101): The model with required weights.
+        U_Net: The model with required weights.
     '''
     assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D data is supported."
     model = U_Net(dims = dims, num_classes = num_classes)
 
     if trained: # If the model has been locally trained, load the fine-tuned weights
         model.load_state_dict(torch.load(f'{dims}D_model_params.pth', weights_only = True))
+    else:
+        # Initialize weights properly for better training stability
+        model._init_weights()
 
     return model.to(device) # Move the model to the specified device
 
@@ -369,12 +391,13 @@ def _get_transform(data : str = 'target', phase : str = 'train') -> T.Compose:
     '''
     DEPRECATED
     Get the appropriate transform for the input data.
+
     Args:
         phase (str): The phase of the dataset, either 'train' or 'val'.
         data (str): The type of input data, either 'input' for scans or 'target' for masks.
 
     Returns:
-        transform (T.Compose): The composed transform for the specified input type.
+        T.Compose: The composed transform for the specified input type.
     '''
     # Note: BILINEAR for images (smooth), NEAREST for masks (preserve labels)
     if data == 'target':
@@ -409,12 +432,13 @@ def get_transform(data : str = 'target', dims : int = 3) -> T.Compose:
     '''
     Get the appropriate transform for the input data.
     Must apply to either 3D (D, H, W, C) or 2D (N, H, W, C).
+
     Args:
         data (str): The type of input data, either 'input' for scans or 'target' for masks.
         dims (int): The number of dimensions for the data (2 or 3).
 
     Returns:
-        transform (T.Compose): The composed transform for the specified input type.
+        T.Compose: The composed transform for the specified input type.
     '''
     assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D data is supported."
     if dims == 3:
@@ -441,11 +465,12 @@ def get_transform(data : str = 'target', dims : int = 3) -> T.Compose:
 def get_augment(dims : int) -> T.Compose:
     """
     Get the appropriate augmentations for the input data.
+
     Args:
         dims (int): The number of dimensions for the data (2 or 3).
 
     Returns:
-        augment (T.Compose): The composed augmentations for the specified dimensions.
+        T.Compose: The composed augmentations for the specified dimensions.
     """
     assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D data is supported."
     if dims == 3:

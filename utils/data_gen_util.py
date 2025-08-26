@@ -177,7 +177,7 @@ class Level_Set_SDF():
         '''
         Get the 4 cardinal derivatives of the SDF.
         Returns:
-            Dn, Ds, De, Dw (tuple): The 4 cardinal derivatives (North, South, East, West).
+            tuple[np.ndarray[float], np.ndarray[float], np.ndarray[float], np.ndarray[float]]: The 4 cardinal derivatives (North, South, East, West).
         '''
         # Pad SDF edges
         padded_sdf = np.pad(self.sdf, pad_width = 1, mode = 'edge')
@@ -206,7 +206,7 @@ class Level_Set_SDF():
         Compute quadrature summed directional gradients (smoothing ridges/troughs).
         This helps us enforce upwinding.
         Returns:
-            nabla_pos, nabla_neg (tuple): The positive and negative nabla fields (for selection dependent on sgn(V)).
+            tuple[np.ndarray[float], np.ndarray[float]]: The positive and negative nabla fields (for selection dependent on sgn(V)).
         '''
         Dn, Ds, De, Dw = self.get_derivatives()
 

@@ -25,7 +25,7 @@ def updateSlide(val):
     fig.canvas.draw_idle()
 
 # Animation update function
-def updateAnim(frame):
+def updateAnim(frame : int):
     pcm[0].set_array(scan[frame].ravel())
     return pcm[0]
 

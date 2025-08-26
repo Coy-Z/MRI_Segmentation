@@ -42,7 +42,7 @@ def updateSlide(val):
     fig.canvas.draw_idle()
 
 # Animation update function
-def updateAnim(frame):
+def updateAnim(frame : int):
     for i in range(2):
         pcm[0][i].set_array(scan[keys[i]][frame].ravel())
         #pcm[0][i].set_clim(vmin = scan[keys[i]][frame].min(), vmax = scan[keys[i]][frame].max())  # Optional: update color scale

@@ -151,7 +151,7 @@ def clip_and_scale(tensor : torch.Tensor, low_clip : float = 1., high_clip : flo
         high_clip (float): Upper percentile to clip at.
 
     Returns:
-        tensor (torch.Tensor): Normalized Float32 tensor scaled to [0, 1].
+        torch.Tensor: Normalized Float32 tensor scaled to [0, 1].
     '''
     # Clip
     flat = tensor.flatten()
@@ -173,7 +173,7 @@ def clip_and_scale_slices(tensor : torch.Tensor, low_clip : float = 1., high_cli
         high_clip (float): Upper percentile to clip at.
 
     Returns:
-        tensor (torch.Tensor): Normalized Float32 tensor, where each slice is scaled to [0, 1].
+        torch.Tensor: Normalized Float32 tensor, where each slice is scaled to [0, 1].
     '''
     # Flatten each slice
     flat = tensor.flatten(1)

@@ -47,7 +47,7 @@ def compare_xyz():
         fig.colorbar(pcm[i], ax=ax[i//2, i%2])
 
     # Animation update function
-    def updateAnim(frame):
+    def updateAnim(frame : int):
         for i in range(4):
             pcm[i].set_array(magn[i][frame].ravel())
         return pcm
@@ -67,7 +67,7 @@ def display_xdata_single(i: int):
     fig.colorbar(pcm, ax = ax, extend = 'max')
 
     # Animation update function
-    def updateAnim(frame):
+    def updateAnim(frame : int):
         pcm.set_array(magn[frame].ravel())
         return pcm
     
@@ -90,7 +90,7 @@ def display_xdata(arr: list):
         fig.colorbar(pcm[i], ax=ax[i%2, i//2])
 
     # Animation update function
-    def updateAnim(frame):
+    def updateAnim(frame : int):
         for i in range(len(arr)):
             pcm[i].set_array(magn[i][frame].ravel())
         return pcm
@@ -111,7 +111,7 @@ def compare_masks():
     fig.colorbar(pcm, ax = ax)
 
     # Animation update function
-    def updateAnim(frame):
+    def updateAnim(frame : int):
         pcm.set_array(mask[frame].ravel())
         return pcm
 

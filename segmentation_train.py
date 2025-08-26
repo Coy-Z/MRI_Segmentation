@@ -9,21 +9,21 @@ from utils.segmentation_util import get_model_instance_unet, sum_IoU, get_transf
 
 '''Need to review using regularisation in loss instead of patience-based early stopping.'''
 
-def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs, patience = 15):
+def train(model, device, dims : int, criterion, optimizer, dataloaders, scheduler, dataset_sizes, num_epochs : int, patience : int = 15):
     """
     Trains the model and returns the best model based on validation IoU.
 
     Args:
         model: The segmentation model to train.
         device: Device to use ('cuda' or 'cpu').
-        dims: Dimensions of the input images.
+        dims (int): Dimensions of the input images.
         criterion: Loss function.
         optimizer: Optimizer.
         dataloaders: Dict of DataLoader objects for 'train' and 'val'.
         scheduler: Learning rate scheduler.
         dataset_sizes: Dict with dataset sizes for 'train' and 'val'.
-        num_epochs: Number of epochs to train.
-        patience: Early stopping patience (number of epochs without improvement).
+        num_epochs (int): Number of epochs to train.
+        patience (int): Early stopping patience (number of epochs without improvement).
 
     Returns:
         model: The trained model with the best validation IoU.

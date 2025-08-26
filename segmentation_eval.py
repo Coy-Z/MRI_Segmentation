@@ -6,16 +6,18 @@ from torchvision.transforms import v2 as T
 from utils.custom_transforms import ToTensor, Resize, ClipAndScale
 from utils.segmentation_util import get_model_instance_unet, get_transform
 
-def evaluation(model, dims, scan, transform, device):
+def evaluation(model, dims : int, scan, transform, device):
     '''
     Calculates the mask.
     Args:
         model: The model being used.
-        images: A numpy array of pixel values (single channel, i.e. greyscale).
+        dims (int): The number of dimensions.
+        scan: A numpy array of pixel values (single channel, i.e. greyscale).
+        transform: The transform to apply.
         device: The device being used.
 
     Returns:
-        masks: A tensor of masks, the same shape as the images array.
+        torch.Tensor: A tensor of masks, the same shape as the images array.
     '''
     if model.training:
         model.eval()
@@ -60,7 +62,7 @@ ax[0].axis("off")
 ax[1].axis("off")
 
 # Animation update function
-def updateAnim(frame):
+def updateAnim(frame : int):
     pcm[0].set_data(images[frame])
     pcm[1].set_data(masks[frame])
     return pcm

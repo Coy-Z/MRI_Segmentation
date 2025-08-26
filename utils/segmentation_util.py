@@ -2,7 +2,6 @@ import numpy as np
 import os
 import torch
 import torch.nn as nn
-import torchvision
 from torchvision.transforms import v2 as T
 from torch.utils.data import Dataset
 from typing import Sequence

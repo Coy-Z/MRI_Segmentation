@@ -31,6 +31,7 @@ class Resize(Transform):
             size (tuple): The desired output size X, (H, W) or (D, H, W), depending on dimension.
             dims (int): The number of dimensions of the input tensor (2 or 3).
             interpolation (str): The interpolation method to use, bilinear for scans or nearest for masks.
+
         N.B. The input tensor have shape 2D (N, H, W) or 3D (D, H, W).
              We add redundancy in dimension inference, because nn.functional.interpolate is flexible with size input.
         '''
@@ -60,6 +61,13 @@ class Resize(Transform):
 def gaussian_kernel_2d(kernel_size: int, sigma: float, channels: int):
     """
     Generate a 2D Gaussian kernel.
+    Args:
+        kernel_size (int): Size of the kernel.
+        sigma (float): Standard deviation of the Gaussian.
+        channels (int): Number of channels.
+
+    Returns:
+        torch.Tensor: The generated 2D Gaussian kernel.
     """
     # Coordinate grid
     ax = torch.arange(kernel_size) - kernel_size // 2
@@ -74,6 +82,13 @@ def gaussian_kernel_2d(kernel_size: int, sigma: float, channels: int):
 def gaussian_kernel_3d(kernel_size: int, sigma: float, channels: int):
     """
     Generate a 3D Gaussian kernel.
+    Args:
+        kernel_size (int): Size of the kernel.
+        sigma (float): Standard deviation of the Gaussian.
+        channels (int): Number of channels.
+
+    Returns:
+        torch.Tensor: The generated 3D Gaussian kernel.
     """
     # Coordinate grid
     ax = torch.arange(kernel_size) - kernel_size // 2
@@ -90,6 +105,13 @@ class GaussianBlur(Transform):
     Custom transform for applying Gaussian blur to PyTorch tensors.
     '''
     def __init__(self, dims : int = 3, channels : int = 1, kernel_size : int = 5, sigma : float = 0.1):
+        '''
+        Args:
+            dims (int): Number of dimensions (2 or 3).
+            channels (int): Number of input channels.
+            kernel_size (int): Size of the Gaussian kernel.
+            sigma (float): Standard deviation of the Gaussian kernel.
+        '''
         super().__init__()
         self.dims = dims
         if dims == 2:
@@ -173,7 +195,19 @@ def clip_and_scale_slices(tensor : torch.Tensor, low_clip : float = 1., high_cli
     return result
 
 class ClipAndScale(Transform):
+    '''
+    Custom transform to clip and scale a tensor.
+    For 2D slices, clips and scales per layer.
+    For 3D volumes, clips and scales the entire volume.
+    '''
     def __init__(self, dims : int = 3, low_clip : float = 1., high_clip : float = 99., epsilon : float = 1e-8):
+        '''
+        Args:
+            dims (int): Number of dimensions (2 or 3).
+            low_clip (float): Lower percentile to clip at.
+            high_clip (float): Upper percentile to clip at.
+            epsilon (float): Small value to avoid division by zero.
+        '''
         super().__init__()
         self.dims = dims
         self.low_clip = low_clip
@@ -187,41 +221,94 @@ class ClipAndScale(Transform):
             return clip_and_scale(tensor, self.low_clip, self.high_clip, self.epsilon)
 
 class RandomXFlip(Transform):
+    '''
+    Randomly flips tensor in W-dimension (-1).
+    '''
     def __init__(self, p = 0.5):
+        '''
+        Args:
+            p (float): Probability of flipping.
+        '''
         super().__init__()
         self.p = p
 
     def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        '''
+        Args:
+            tensor (torch.Tensor): Input tensor to randomly flip.
+
+        Returns:
+            torch.Tensor: Randomly flipped tensor.
+        '''
         if torch.rand(1) < self.p:
             tensor = torch.flip(tensor, dims=[-1])
         return tensor
 
 class RandomYFlip(Transform):
+    '''
+    Flips tensor in H-dimension (-2).
+    '''
     def __init__(self, p = 0.5):
+        '''
+        Args:
+            p (float): Probability of flipping.
+        '''
         super().__init__()
         self.p = p
 
     def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        '''
+        Args:
+            tensor (torch.Tensor): Input tensor to randomly flip.
+
+        Returns:
+            torch.Tensor: Randomly flipped tensor.
+        '''
         if torch.rand(1) < self.p:
             tensor = torch.flip(tensor, dims=[-2])
         return tensor
 
 class RandomZFlip(Transform):
+    '''
+    Flips tensor in D-dimension (-3)
+    '''
     def __init__(self, p = 0.5):
+        '''
+        Args:
+            p (float): Probability of flipping.
+        '''
         super().__init__()
         self.p = p
 
     def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        '''
+        Args:
+            tensor (torch.Tensor): Input tensor to randomly flip.
+
+        Returns:
+            torch.Tensor: Randomly flipped tensor.
+        '''
         if torch.rand(1) < self.p:
             tensor = torch.flip(tensor, dims=[-3])
         return tensor
 
 class RandomRotation(Transform):
     def __init__(self, degrees: float):
+        '''
+        Args:
+            degrees (float): Maximum rotation angle in degrees. Rotation will be in range [-degrees, degrees].
+        '''
         super().__init__()
         self.degrees = degrees
 
     def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        '''
+        Args:
+            tensor (torch.Tensor): Input tensor to randomly rotate.
+
+        Returns:
+            torch.Tensor: Randomly rotated tensor.
+        '''
         if torch.rand(1) > 0.5:
             angle = torch.randint(-self.degrees, self.degrees + 1, (1,)).item()
             tensor = T.functional.rotate(tensor, angle)
@@ -229,12 +316,25 @@ class RandomRotation(Transform):
     
 class GaussianNoise(Transform):
     def __init__(self, mean : float = 0.0, sigma : float = 0.1, clip : bool = False):
+        '''
+        Args:
+            mean (float): Mean of the Gaussian noise.
+            sigma (float): Standard deviation of the Gaussian noise.
+            clip (bool): Whether to clip the noise to [0, 1].
+        '''
         super().__init__()
         self.mean = mean
         self.sigma = sigma
         self.clip = clip
 
     def forward(self, tensor : torch.Tensor) -> torch.Tensor:
+        '''
+        Args:
+            tensor (torch.Tensor): Input tensor to add Gaussian noise.
+
+        Returns:
+            torch.Tensor: Tensor with added Gaussian noise.
+        '''
         noise = torch.randn_like(tensor) * self.sigma + self.mean
         if self.clip:
             noise = torch.clamp(noise, 0, 1)

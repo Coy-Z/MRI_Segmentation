@@ -6,14 +6,7 @@ from torchvision.transforms import v2 as T
 from utils.custom_transforms import ToTensor, Resize, ClipAndScale
 from utils.segmentation_util import get_model_instance_unet, get_transform
 
-val_transform = T.Compose([
-    ToTensor(),
-    T.ToDtype(torch.float32, scale=True),
-    Resize(size=(64, 64), interpolation='bilinear'),
-    ClipAndScale()
-])
-
-def evaluation(model, scan, device):
+def evaluation(model, dims, scan, transform, device):
     '''
     Calculates the mask.
     Args
@@ -26,9 +19,10 @@ def evaluation(model, scan, device):
     if model.training:
         model.eval()
     with torch.inference_mode():
-        inputs = val_transform(scan).to(device)  # (D * 1 * H * W)
+        inputs = transform(scan).to(device)  # (D * H * W)
+        inputs = inputs.unsqueeze(3 - dims)  # 2D (D * 1 * H * W) or 3D (1 * D * H * W)
         outputs = model(inputs)
-        preds = torch.argmax(outputs, dim = 1)
+        preds = torch.argmax(outputs, dim = 3 - dims)
     masks = preds.squeeze().cpu()
     return masks
 
@@ -37,12 +31,23 @@ dims = 3
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = True)
 
-# Load data: Optionally apply Gaussian smoothing
-target = 'Carotid'
+# Define validation transform
+val_transform = T.Compose([
+    ToTensor(),
+    T.ToDtype(torch.float32, scale=True),
+    Resize(dims = dims, size=(64, 64) if dims == 2 else (64, 64, 64), interpolation='bilinear' if dims == 2 else 'trilinear'),
+    ClipAndScale()
+])
+
+# Load data
+target = 'Coarct_Aorta'
 images = np.load(f'data/val/magn/{target}.npy')
 
 # Inference
-masks = evaluation(model, images, device)
+masks = evaluation(model, dims, images, val_transform, device)
+
+# Resize images
+images = Resize(dims = dims, size=(64, 64) if dims == 2 else (64, 64, 64), interpolation = 'bilinear' if dims == 2 else 'trilinear')(ToTensor()(images)).numpy()
 
 # Visualization
 pcm = []

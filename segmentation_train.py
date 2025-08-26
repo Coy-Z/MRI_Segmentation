@@ -129,13 +129,16 @@ if __name__ == '__main__':
     # Augments are random changes, which are useful for training but not validation.
     transform = get_transform(data='input', dims=dims)
     target_transform = get_transform(data='target', dims=dims)
-    augment = T.Compose([ # Currently not in use
-        GaussianNoise(mean = 0, sigma = 0.2),
+    augments = [
         RandomXFlip(p = 0.5),
         RandomYFlip(p = 0.5),
-        RandomZFlip(p = 0.5) if dims == 3 else None,
         RandomRotation(degrees = 15),
-    ])
+    ]
+    if dims == 3:
+        augments.insert(2, RandomZFlip(p = 0.5))
+    augment = T.Compose(
+        augments
+        )
 
     # Set up datasets and dataloaders
     data_dir = 'data'

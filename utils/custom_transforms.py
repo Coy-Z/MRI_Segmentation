@@ -44,10 +44,10 @@ class Resize(Transform):
     def forward(self, tensor : torch.Tensor) -> torch.Tensor:
         '''
         Args:
-            tensor (torch.Tensor): The input tensor to resize of shape 2D (N, H, W) or 3D (D, H, W)
+            tensor (torch.Tensor): The input tensor to resize of shape 2D (N, H, W) or 3D (D, H, W).
 
         Returns:
-            torch.Tensor: The resized tensor 2D (N, self.size) or 3D (self.size)
+            torch.Tensor: The resized tensor 2D (N, self.size) or 3D (self.size).
         '''
         if self.dims == 2:
             result = nn.functional.interpolate(tensor.unsqueeze(0), size = self.size, mode = self.interpolation).squeeze(0)
@@ -133,10 +133,10 @@ class GaussianBlur(Transform):
     def forward(self, tensor : torch.Tensor) -> torch.Tensor:
         '''
         Args:
-            tensor (torch.Tensor): Input tensor 2D (N, H, W) or 3D (D, H, W)
+            tensor (torch.Tensor): Input tensor 2D (N, H, W) or 3D (D, H, W).
 
         Returns:
-            torch.Tensor: Blurred tensor 2D (N, H, W) or 3D (D, H, W)
+            torch.Tensor: Blurred tensor 2D (N, H, W) or 3D (D, H, W).
         '''
         tensor = tensor.unsqueeze(3 - self.dims)
         return self.conv(tensor).squeeze(3 - self.dims)
@@ -246,7 +246,7 @@ class RandomXFlip(Transform):
 
 class RandomYFlip(Transform):
     '''
-    Flips tensor in H-dimension (-2).
+    Randomly flips tensor in H-dimension (-2).
     '''
     def __init__(self, p = 0.5):
         '''
@@ -270,7 +270,7 @@ class RandomYFlip(Transform):
 
 class RandomZFlip(Transform):
     '''
-    Flips tensor in D-dimension (-3)
+    Randomly flips tensor in D-dimension (-3).
     '''
     def __init__(self, p = 0.5):
         '''

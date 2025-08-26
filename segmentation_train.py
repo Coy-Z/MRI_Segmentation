@@ -105,7 +105,12 @@ def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dat
             if epochs_no_improve >= patience:
                 print(f'Early stopping after {epoch + 1} epochs (no improvement for {patience} epochs)')
                 break
-                
+
+            # Check for NaN loss
+            if epoch_loss != epoch_loss:
+                print(f'NaN loss detected at epoch {epoch + 1}. Stopping training.')
+                break
+
             print()
         time_elapsed = time.time() - since
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s.')
@@ -117,7 +122,7 @@ def train(model, device, dims, criterion, optimizer, dataloaders, scheduler, dat
 
 if __name__ == '__main__':
     # Select dimensions and device
-    dims = 3
+    dims = 2
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using {device} device.')
     if torch.cuda.is_available():
@@ -152,9 +157,9 @@ if __name__ == '__main__':
     criterion = Combined_Loss(device, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights = (0.1, 0.9))
     
     # Use AdamW with weight decay for L2 regularization
-    optimizer = optim.AdamW(model.parameters(), lr = 0.0001, weight_decay = 0.01)
-    
-    # Conservative learning rate schedule
+    optimizer = optim.AdamW(model.parameters(), lr = 0.0001, weight_decay = 0.001)
+
+    # Learning rate scheduler reduces learning rate when validation IoU plateaus
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode = 'max', factor = 0.5,
                                                         patience = 10, min_lr = 1e-7)
 

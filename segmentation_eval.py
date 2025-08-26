@@ -9,12 +9,13 @@ from utils.segmentation_util import get_model_instance_unet, get_transform
 def evaluation(model, dims, scan, transform, device):
     '''
     Calculates the mask.
-    Args
-        model: the model being used
-        images: a numpy array of pixel values (single channel, i.e. greyscale)
-        device: the device being used
-    Returns
-        masks: a tensor of masks, the same shape as the images array
+    Args:
+        model: The model being used.
+        images: A numpy array of pixel values (single channel, i.e. greyscale).
+        device: The device being used.
+
+    Returns:
+        masks: A tensor of masks, the same shape as the images array.
     '''
     if model.training:
         model.eval()

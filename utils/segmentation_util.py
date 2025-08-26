@@ -26,6 +26,7 @@ class MRIDataset(Dataset):
             augment (T.Compose): The stochastic component of transform (e.g. random horizontal flip -> additional training transform).
 
         N.B. transform and augment are separate because we must merge the scan and mask to ensure consistent augmentation.
+             However, interpolation schemes for the two are different.
         '''
         assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D scans are supported."
         super().__init__()
@@ -350,12 +351,13 @@ def get_model_instance_unet(num_classes : int, device : str = 'cpu', dims : int 
     Args:
         num_classes (int): The number of output classes. Here, we use two -> 0. Background | 1. Blood vessel
         device (str): The device to run the model on ('cpu' or 'cuda').
-        architecture (str): The model architecture to use ('fcn_resnet50', 'fcn_resnet101' or 'unet').
+        dims (int): The number of dimensions for the input data (2 or 3).
         trained (bool): A boolean depicting whether the model has been locally trained or not, i.e. whether to load fine-tuned or default weights.
 
     Returns:
         model (torchvision.models.segmentation.fcn_resnet101): The model with required weights.
     '''
+    assert dims in [2, 3], "Invalid dimensions. Only 2D and 3D data is supported."
     model = U_Net(dims = dims, num_classes = num_classes)
 
     if trained: # If the model has been locally trained, load the fine-tuned weights

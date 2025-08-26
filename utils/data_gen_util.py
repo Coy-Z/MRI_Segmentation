@@ -89,7 +89,7 @@ class Random_Speed_Field():
         Sample random smooth functions from an untrained Gaussian Process. We exploit the separable nature
         of the RBF kernel on a structured grid, i.e. K = Kronecker(K_x, K_y), hence only requiring compute in 1D.
         Args:
-            grid_shape (tuple): The shape of the grid to sample on (height, width). If None, uses self.V.shape
+            grid_shape (tuple): The shape of the grid to sample on (height, width). If None, uses self.V.shape.
             length_scale (float): The length scale of the Gaussian Process (larger -> smoother).
             variance (float): The variance of the Gaussian Process (controls amplitude of function).
 
@@ -123,7 +123,7 @@ class Random_Speed_Field():
             variance (float): The variance for the Gaussian Process (controls amplitude of function).
 
         N.B. We use a log-normal distribution for the length scale to ensure positivity,
-            and also since it makes more physical sense
+             and also since it makes more physical sense.
         '''
         length_scale = np.exp(np.random.normal(log_length_scale_mean, log_length_scale_variance))
         self.field += self.gaussian_process(grid_shape = self.shape, length_scale = length_scale, variance = amplitude_variance)
@@ -143,8 +143,8 @@ class Level_Set_SDF():
         '''
         Initialize the Level_Set_SDF class with a seed SDF and speed field.
         Args:
-            V (Random_Speed_Field): Speed field
-            SDF (np.ndarray or None): Initial signed distance field (must be the same size as V)
+            V (Random_Speed_Field): Speed field.
+            SDF (np.ndarray or None): Initial signed distance field (must be the same size as V).
         '''
         self.V = V
         self.dt = min(0.05 / self.V.field.max(), 0.02) # Time step size based on max speed -> enforces CFL conditions. Courant Number <= 0.05
@@ -167,7 +167,7 @@ class Level_Set_SDF():
         '''
         Update the speed field associated with the Level_Set_SDF instance.
         Args:
-            V (Random_Speed_Field): New speed field
+            V (Random_Speed_Field): New speed field.
         '''
         assert V.field.shape == self.V.field.shape, "New speed field must be the same shape as current speed field."
         self.V = V
@@ -177,7 +177,7 @@ class Level_Set_SDF():
         '''
         Get the 4 cardinal derivatives of the SDF.
         Returns:
-            Dn, Ds, De, Dw (tuple): The 4 cardinal derivatives (North, South, East, West)
+            Dn, Ds, De, Dw (tuple): The 4 cardinal derivatives (North, South, East, West).
         '''
         # Pad SDF edges
         padded_sdf = np.pad(self.sdf, pad_width = 1, mode = 'edge')
@@ -206,7 +206,7 @@ class Level_Set_SDF():
         Compute quadrature summed directional gradients (smoothing ridges/troughs).
         This helps us enforce upwinding.
         Returns:
-            nabla_pos, nabla_neg (tuple): The positive and negative nabla fields (for selection dependent on sgn(V))
+            nabla_pos, nabla_neg (tuple): The positive and negative nabla fields (for selection dependent on sgn(V)).
         '''
         Dn, Ds, De, Dw = self.get_derivatives()
 
@@ -267,8 +267,8 @@ class SDF_MRI(Level_Set_SDF):
         '''
         Initialize the SDF_MRI class with a seed SDF and speed field.
         Args:
-            V (Random_Speed_Field): Speed field
-            SDF (np.ndarray or None): Initial signed distance field (must be the same size as V)
+            V (Random_Speed_Field): Speed field.
+            SDF (np.ndarray or None): Initial signed distance field (must be the same size as V).
         '''
         super().__init__(V, SDF)
         self.N = V.field.shape[0] # We will assume we are always generating square data.

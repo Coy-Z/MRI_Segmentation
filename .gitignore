@@ -31,5 +31,5 @@ docker/
 notes/
 
 # Ignore deprecated paraview scripts
-paraview_scripts_DEPRECATED/
+
 paraview_scripts/

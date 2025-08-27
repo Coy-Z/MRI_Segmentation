@@ -13,6 +13,7 @@ on the full project.
 ResNet stands for Residual Network, and is constructed off residual blocks, where skip connections allow the input to be added to the output of each block. This improves gradient stability, preventing vanishing gradients. The U-Net is an architecture that applies skip connections on a larger scale, across many convolutional layers.
 
 ![unet](images/unet.png)
+
 *Figure 1: The U-Net architecture.*
 
 After testing the FCN_ResNet_101, FCN_ResNet_50 and U-Net, it became very clear that the U-Net performed far better, converging faster and performing better in the validation IoU metric. FCN_ResNet support has since been removed from the repo.
@@ -47,13 +48,16 @@ We reserve real segmented MRI data for the validation set. It also turns out tha
 
 Future work would involve extracting more real data, and applying k-fold cross-validation to the synthetic data. A collection of 3D seed SDFs need to be produced, to give more variation in the training set, preventing distributional shifts between training and validation sets. Testing needs to be performed on unseen real data, to see how the model truly generalises to unseen data.
 
-![Aorta](images/aorta.png)
+![Aorta](images/data_examples/aorta.png)
+
 *Figure 2: This is a slice of the Aorta density scan.*
 
-![Carotid](images/carotid.png)
+![Carotid](images/data_examples/carotid.png)
+
 *Figure 3: This is a slice of the Carotid density scan.*
 
-![Artificial](images/artificial_data.png)
+![Artificial](images/data_examples/artificial_data.png)
+
 *Figure 4: This is a slice of the artificially generated density scan. The white lines overlayed on the magnitude scan are Signed Distance Field contours.*
 
 Note: The real MRI data is not yet publicly available.

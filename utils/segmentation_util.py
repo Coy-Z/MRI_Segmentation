@@ -275,9 +275,7 @@ class Combined_Loss(nn.Module):
         CE = self.CELoss(output, target)
         DICE = self.DiceLoss(output, target, self.epsilon)
         FOC_TVSKY = self.FocalTverskyLoss(output, target, self.epsilon)
-        return FOC_TVSKY
-        return DICE
-        return self.alpha * FOC_TVSKY + CE
+        return self.alpha * DICE + CE
     
     def DiceLoss(self, output : torch.Tensor, target : torch.Tensor, epsilon : float = 1e-8) -> float:
         '''

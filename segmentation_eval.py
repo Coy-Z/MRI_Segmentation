@@ -30,12 +30,12 @@ def evaluation(model, dims : int, scan, transform, device):
     return masks
 
 # Device and model setup
-dims = 2
+dims = 3
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = True)
 
 # Load data
-target = 'Carotid'
+target = 'Aorta'
 images = np.load(f'data/val/magn/{target}.npy')
 print(images.shape)
 
@@ -78,7 +78,7 @@ ani = FuncAnimation(fig, updateAnim, frames = images.shape[0], interval = 100, b
 
 # Save animation as GIF to prevent the warning and ensure it's properly rendered
 print("Saving animation as GIF...")
-ani.save(f'images/{dims}D_{target}.gif', writer='pillow', fps=10)
+ani.save(f'images/loss_comparison/DICE_{dims}D_{target}.gif', writer='pillow', fps=10)
 print(f"Animation saved as {dims}D_{target}.gif")
 
 # Optionally show the plot if display is available

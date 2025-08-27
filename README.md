@@ -35,14 +35,13 @@ To overcome this, we use a level set method to generate synthetic data. The proc
 below:
 
 1. Use analytical methods or pre-written packages to generate a seed SDF. In this repo, I have
-written classes for tubes and circles. New seed geometries can be used by parsing the
-new SDF into the utils.data_gen_utils.SDF_MRI base class initialization.
+written classes for tubes and circles, which represent longitudinal and transverse cuts of simple vessels. New seed geometries can be used by parsing the new SDF into the utils.data_gen_utils.SDF_MRI base class initialization.
 2. Generate an empty speed field and modulate it with random smooth functions.
-3. Use a level-set iterative method on the speed field and seed SDFs to perturb the geometry, forming a new SDF.
+3. Use a level-set iterative method on the speed field and seed SDFs to perturb the geometry, forming a new SDF. Note, we can produce pseudo-3D images with 2D seeds by incremental stepping, allowing for satisfactory training data for 3D mode, while being non-impactful for 2D mode.
 4. Apply a np.where() method for the binary mask.
 5. Apply an activation to the SDF with masked noise for the magnitude replica.
 
-The masked noise consists of the product of the binary mask with random sampled coherent functions from a Gaussian Process and Gaussian White Noise.
+The masked noise consists of the product of the complement of the binary mask with random sampled coherent functions from a Gaussian Process and Gaussian White Noise.
 
 We reserve real segmented MRI data for the validation set. It also turns out that padding the validation set with some synthetic data helps balance the training and validation set sizes, leading to better performance.
 

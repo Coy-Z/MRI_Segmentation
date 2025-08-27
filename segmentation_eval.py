@@ -34,23 +34,29 @@ dims = 2
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = True)
 
+# Load data
+target = 'Carotid'
+images = np.load(f'data/val/magn/{target}.npy')
+print(images.shape)
+
+resize_shape = np.array(images.shape[1:] if dims == 2 else images.shape)
+
+resize_shape = tuple(resize_shape - (resize_shape - 1) % 16 + 15)  # Ensure dimensions are multiples of 16
+print(f"Resized shape: {resize_shape}")
+
 # Define validation transform
 val_transform = T.Compose([
     ToTensor(),
     T.ToDtype(torch.float32, scale=True),
-    Resize(dims = dims, size = (64, 64) if dims == 2 else (64, 64, 64), interpolation = 'bilinear' if dims == 2 else 'trilinear'),
+    Resize(dims = dims, size = resize_shape, interpolation = 'bilinear' if dims == 2 else 'trilinear'),
     ClipAndScale()
 ])
-
-# Load data
-target = 'Coarct_Aorta'
-images = np.load(f'data/val/magn/{target}.npy')
 
 # Inference
 masks = evaluation(model, dims, images, val_transform, device)
 
 # Resize images
-images = Resize(dims = dims, size = (64, 64) if dims == 2 else (64, 64, 64), interpolation = 'bilinear' if dims == 2 else 'trilinear')(ToTensor()(images)).numpy()
+images = Resize(dims = dims, size = resize_shape, interpolation = 'bilinear' if dims == 2 else 'trilinear')(ToTensor()(images)).numpy()
 
 # Visualization
 pcm = []

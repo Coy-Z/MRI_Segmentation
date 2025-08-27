@@ -122,7 +122,7 @@ def train(model, device, dims : int, criterion, optimizer, dataloaders, schedule
 
 if __name__ == '__main__':
     # Select dimensions and device
-    dims = 2
+    dims = 3
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using {device} device.')
     if torch.cuda.is_available():
@@ -154,10 +154,10 @@ if __name__ == '__main__':
     
     # Initialize model, loss, optimizer, and scheduler
     model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = False)
-    criterion = Combined_Loss(device, dims = dims, alpha = 0.5, beta = 0.7, gamma = 0.75, ce_weights = (0.1, 0.9))
+    criterion = Combined_Loss(device, dims = dims, alpha = 0, beta = 0.7, gamma = 0.75, ce_weights = (0.1, 0.9))
     
     # Use AdamW with weight decay for L2 regularization
-    optimizer = optim.AdamW(model.parameters(), lr = 0.0001, weight_decay = 0.001)
+    optimizer = optim.AdamW(model.parameters(), lr = 0.0001, weight_decay = 0.01)
 
     # Learning rate scheduler reduces learning rate when validation IoU plateaus
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode = 'max', factor = 0.5,
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     
     # Train the model
     model = train(model, device, dims, criterion, optimizer, dataloaders, lr_scheduler, dataset_sizes, 
-                  num_epochs = 100, patience = 20)
+                  num_epochs = 100, patience = 10)
 
     # Save the model parameters
     torch.save(model.state_dict(), f'{dims}D_model_params.pth')

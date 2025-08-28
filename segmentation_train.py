@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2 as T
 from tempfile import TemporaryDirectory
 from utils.segmentation_util import get_model_instance_unet, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
+from utils.segmentation_util import get_model_instance_unet, sum_IoU, get_transform, custom_collate_fn, MRIDataset, Combined_Loss
 
 '''Need to review using regularisation in loss instead of patience-based early stopping.'''
 

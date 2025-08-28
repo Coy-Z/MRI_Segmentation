@@ -15,10 +15,12 @@ class ToTensor(Transform):
         '''
         Args:
             array (np.ndarray): Input numpy array.
+            array (np.ndarray): Input numpy array.
 
         Returns:
             torch.Tensor: Output PyTorch tensor of the same shape and values as input.
         '''
+        return torch.from_numpy(array)
         return torch.from_numpy(array)
 
 class Resize(Transform):
@@ -47,8 +49,10 @@ class Resize(Transform):
 
         Returns:
             torch.Tensor: The resized tensor 2D (N, self.size) or 3D (self.size)
+            torch.Tensor: The resized tensor 2D (N, self.size) or 3D (self.size)
         '''
         if self.dims == 2:
+            result = nn.functional.interpolate(tensor.unsqueeze(0), size=self.size, mode=self.interpolation).squeeze(0)
             result = nn.functional.interpolate(tensor.unsqueeze(0), size=self.size, mode=self.interpolation).squeeze(0)
         elif self.dims == 3:
             # For 3D tensors, we need to specify the mode as 'trilinear' or 'nearest'
@@ -112,8 +116,10 @@ class GaussianBlur(Transform):
         '''
         Args:
             tensor (torch.Tensor): Input tensor 2D (N, H, W) or 3D (D, H, W)
+            tensor (torch.Tensor): Input tensor 2D (N, H, W) or 3D (D, H, W)
 
         Returns:
+            torch.Tensor: Blurred tensor 2D (N, H, W) or 3D (D, H, W)
             torch.Tensor: Blurred tensor 2D (N, H, W) or 3D (D, H, W)
         '''
         tensor = tensor.unsqueeze(3 - self.dims)

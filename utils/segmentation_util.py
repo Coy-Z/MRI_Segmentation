@@ -6,13 +6,13 @@ import torchvision
 from torchvision.transforms import v2 as T
 from torch.utils.data import Dataset
 from typing import Sequence
-from custom_transforms import ToTensor, Resize, GaussianBlur, ClipAndScale
+from .custom_transforms import ToTensor, Resize, GaussianBlur, ClipAndScale
 
 class MRIDataset(Dataset):
     '''
     A custom dataset class for processing .npy 3D MRI density scans.
     '''
-    def __init__(self, root : str, phase : str = 'val', dims : int = 2, transform : T.Compose = None,
+    def __init__(self, root : str, phase : str = 'val', dims : int = 3, transform : T.Compose = None,
                  target_transform : T.Compose = None, augment : T.Compose = None):
         '''
         Initialise the MRIDataset daughter class of torch.utils.data.Dataset.
@@ -67,6 +67,7 @@ class MRIDataset(Dataset):
         
         # Apply transforms
         if self.transform:
+            scan = self.transform(scan) # (D * H * W)
             scan = self.transform(scan) # (D * H * W)
         if self.target_transform:
             mask = self.target_transform(mask) # (D * H * W)
@@ -345,8 +346,8 @@ def get_model_instance_unet(num_classes : int, device : str = 'cpu', dims : int 
 
     Args:
         num_classes (int): The number of output classes. Here, we use two -> 0. Background | 1. Blood vessel
+        dims (int): The number of dimensions for the input data (2 or 3).
         device (str): The device to run the model on ('cpu' or 'cuda').
-        architecture (str): The model architecture to use ('fcn_resnet50', 'fcn_resnet101' or 'unet').
         trained (bool): A boolean depicting whether the model has been locally trained or not, i.e. whether to load fine-tuned or default weights.
 
     Returns:

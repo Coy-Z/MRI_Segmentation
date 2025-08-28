@@ -154,7 +154,7 @@ if __name__ == '__main__':
     
     # Initialize model, loss, optimizer, and scheduler
     model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = False)
-    criterion = Combined_Loss(device, dims = dims, alpha = 0, ce_weights = (0.3, 0.7))
+    criterion = Combined_Loss(device, dims = dims, alpha = 1, ce_weights = (0.3, 0.7))
     
     # Use AdamW with weight decay for L2 regularization
     optimizer = optim.AdamW(model.parameters(), lr = 0.0001, weight_decay = 0.01)

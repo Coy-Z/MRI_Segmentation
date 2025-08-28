@@ -122,7 +122,7 @@ def train(model, device, dims : int, criterion, optimizer, dataloaders, schedule
 
 if __name__ == '__main__':
     # Select dimensions and device
-    dims = 3
+    dims = 2
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'Using {device} device.')
     if torch.cuda.is_available():

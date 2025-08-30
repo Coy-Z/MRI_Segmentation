@@ -29,60 +29,61 @@ def evaluation(model, dims : int, scan, transform, device):
     masks = preds.squeeze().cpu()
     return masks
 
-# Device and model setup
-dims = 2
-device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = True)
+if __name__ == '__main__':
+    # Device and model setup
+    dims = 2
+    device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+    model = get_model_instance_unet(num_classes = 2, device = device, dims = dims, trained = True)
 
-# Load data
-target = 'Carotid'
-images = np.load(f'data/val/magn/{target}.npy')
-print(images.shape)
+    # Load data
+    target = 'Carotid'
+    images = np.load(f'data/val/magn/{target}.npy')
+    print(images.shape)
 
-resize_shape = np.array(images.shape[1:] if dims == 2 else images.shape)
+    resize_shape = np.array(images.shape[1:] if dims == 2 else images.shape)
 
-resize_shape = tuple(resize_shape - (resize_shape - 1) % 16 + 15)  # Ensure dimensions are multiples of 16
-print(f"Resized shape: {resize_shape}")
+    resize_shape = tuple(resize_shape - (resize_shape - 1) % 16 + 15)  # Ensure dimensions are multiples of 16
+    print(f"Resized shape: {resize_shape}")
 
-# Define validation transform
-val_transform = T.Compose([
-    ToTensor(),
-    T.ToDtype(torch.float32, scale=True),
-    Resize(dims = dims, size = resize_shape, interpolation = 'bilinear' if dims == 2 else 'trilinear'),
-    ClipAndScale()
-])
+    # Define validation transform
+    val_transform = T.Compose([
+        ToTensor(),
+        T.ToDtype(torch.float32, scale=True),
+        Resize(dims = dims, size = resize_shape, interpolation = 'bilinear' if dims == 2 else 'trilinear'),
+        ClipAndScale()
+    ])
 
-# Inference
-masks = evaluation(model, dims, images, val_transform, device)
+    # Inference
+    masks = evaluation(model, dims, images, val_transform, device)
 
-# Resize images
-images = Resize(dims = dims, size = resize_shape, interpolation = 'bilinear' if dims == 2 else 'trilinear')(ToTensor()(images)).numpy()
+    # Resize images
+    images = Resize(dims = dims, size = resize_shape, interpolation = 'bilinear' if dims == 2 else 'trilinear')(ToTensor()(images)).numpy()
 
-# Visualization
-pcm = []
-fig, ax = plt.subplots(1, 2, figsize = (10,6))
-pcm.append(ax[0].imshow(images[13], cmap = 'bone'))
-pcm.append(ax[1].imshow(masks[13], cmap = 'cividis', vmin=0, vmax=1))
-fig.colorbar(pcm[1], ax = ax, shrink = 0.6)
-ax[0].axis("off")
-ax[1].axis("off")
+    # Visualization
+    pcm = []
+    fig, ax = plt.subplots(1, 2, figsize = (10,6))
+    pcm.append(ax[0].imshow(images[13], cmap = 'bone'))
+    pcm.append(ax[1].imshow(masks[13], cmap = 'cividis', vmin=0, vmax=1))
+    fig.colorbar(pcm[1], ax = ax, shrink = 0.6)
+    ax[0].axis("off")
+    ax[1].axis("off")
 
-# Animation update function
-def updateAnim(frame : int):
-    pcm[0].set_data(images[frame])
-    pcm[1].set_data(masks[frame])
-    return pcm
+    # Animation update function
+    def updateAnim(frame : int):
+        pcm[0].set_data(images[frame])
+        pcm[1].set_data(masks[frame])
+        return pcm
 
-# Create animation and keep reference to prevent garbage collection
-ani = FuncAnimation(fig, updateAnim, frames = images.shape[0], interval = 100, blit = False)
+    # Create animation and keep reference to prevent garbage collection
+    ani = FuncAnimation(fig, updateAnim, frames = images.shape[0], interval = 100, blit = False)
 
-# Save animation as GIF to prevent the warning and ensure it's properly rendered
-print("Saving animation as GIF...")
-ani.save(f'images/{dims}D_{target}.gif', writer='pillow', fps=10)
-print(f"Animation saved as {dims}D_{target}.gif")
+    # Save animation as GIF to prevent the warning and ensure it's properly rendered
+    print("Saving animation as GIF...")
+    ani.save(f'images/{dims}D_{target}.gif', writer='pillow', fps=10)
+    print(f"Animation saved as {dims}D_{target}.gif")
 
-# Optionally show the plot if display is available
-try:
-    plt.show(block=True)
-except:
-    print("Display not available, animation saved to file instead")
+    # Optionally show the plot if display is available
+    try:
+        plt.show(block=True)
+    except:
+        print("Display not available, animation saved to file instead")
